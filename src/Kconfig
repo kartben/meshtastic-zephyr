@@ -1,0 +1,97 @@
+# Meshtastic mesh radio stack
+#
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC
+	bool "Meshtastic mesh radio stack [EXPERIMENTAL]"
+	depends on ZEPHYR_NANOPB_MODULE
+	select LORA
+	select NANOPB
+	select PSA_CRYPTO
+	select PSA_WANT_ALG_CTR
+	select PSA_WANT_KEY_TYPE_AES
+	select EXPERIMENTAL
+	help
+	  Enable the Meshtastic mesh radio stack.
+
+	  Provides a wire-compatible implementation of the Meshtastic protocol
+	  (https://meshtastic.org) on top of the Zephyr raw LoRa driver API.
+	  Supports text messaging (PortNum 1) and raw data delivery over the
+	  LongFast channel parameters (SF 11, BW 250 kHz, CR 4/5).
+
+	  Requires a LoRa transceiver supported by the Zephyr LoRa driver
+	  (e.g. SX1276, SX1262) and the nanopb module in the west workspace.
+
+if MESHTASTIC
+
+config MESHTASTIC_PHONEAPI
+	bool
+
+menuconfig MESHTASTIC_SETTINGS
+	bool "Persist Meshtastic configuration with Zephyr settings"
+	select SETTINGS
+	help
+	  Store Meshtastic owner, channel, config and module settings through
+	  Zephyr's settings subsystem. The selected settings backend remains
+	  controlled by the application or board configuration.
+
+if MESHTASTIC_SETTINGS
+
+config MESHTASTIC_SETTINGS_SAVE_DELAY_MS
+	int "Meshtastic settings save delay (ms)"
+	default 1000
+	range 0 60000
+	help
+	  Delay used to coalesce runtime configuration changes before saving
+	  the Meshtastic settings subtree.
+
+endif # MESHTASTIC_SETTINGS
+
+module = MESHTASTIC
+module-str = meshtastic
+source "subsys/logging/Kconfig.template.log_config"
+
+rsource "Kconfig.core"
+rsource "Kconfig.nodedb"
+rsource "Kconfig.nodeinfo"
+rsource "Kconfig.message"
+rsource "Kconfig.ble"
+rsource "Kconfig.serial"
+rsource "Kconfig.shell"
+rsource "Kconfig.gnss"
+rsource "Kconfig.device_metrics"
+rsource "Kconfig.environment_metrics"
+rsource "Kconfig.telemetry"
+rsource "Kconfig.mqtt"
+
+menu "LoRa transmit retry"
+
+config MESHTASTIC_TX_BUSY_RETRIES
+	int "Retries when CAD reports busy channel"
+	range 0 32
+	default 6
+	help
+	  Number of retransmission attempts when lora_send() returns -EBUSY
+	  because CAD/LBT detected channel activity.
+
+config MESHTASTIC_TX_BUSY_BACKOFF_MIN_MS
+	int "Minimum backoff on busy channel (ms)"
+	range 0 60000
+	default 8
+	help
+	  Minimum randomized wait in milliseconds between retry attempts when
+	  the channel is busy.
+
+config MESHTASTIC_TX_BUSY_BACKOFF_MAX_MS
+	int "Maximum backoff on busy channel (ms)"
+	range 0 60000
+	default 40
+	help
+	  Maximum randomized wait in milliseconds between retry attempts when
+	  the channel is busy.
+	  If this is less than the minimum, the minimum value is used.
+
+endmenu
+
+endif # MESHTASTIC

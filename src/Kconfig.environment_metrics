@@ -1,0 +1,30 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_ENVIRONMENT_METRICS
+	bool "Meshtastic environment metrics telemetry"
+	depends on SENSOR
+	select REQUIRES_FLOAT_PRINTF
+	help
+	  Read temperature/humidity/pressure/gas/light sensors via the
+	  ambient_temp0, humidity0, pressure_sensor, gas_sensor and
+	  light_sensor devicetree aliases and broadcast Meshtastic
+	  EnvironmentMetrics Telemetry. Only quantities whose alias exists
+	  and is "okay" are compiled in.
+
+if MESHTASTIC_ENVIRONMENT_METRICS
+
+config MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND
+	bool "Automatically send environment metrics"
+	default y
+	help
+	  Send environment metrics periodically after meshtastic_init().
+
+config MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC
+	int "Environment metrics send interval in seconds"
+	default 900
+	range 30 86400
+	help
+	  Interval between automatic environment metrics Telemetry packets.
+
+endif # MESHTASTIC_ENVIRONMENT_METRICS

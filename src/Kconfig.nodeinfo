@@ -1,0 +1,64 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_NODEINFO
+	bool "Meshtastic NodeInfo announcement"
+	default y
+	help
+	  Announce this node's User identity (name, MAC address derived from
+	  the node ID, hardware model and role) to the mesh on the
+	  NODEINFO_APP port. Without it peers only see a bare node number
+	  with no name, MAC address or hardware model.
+
+if MESHTASTIC_NODEINFO
+
+config MESHTASTIC_NODEINFO_AUTO_SEND
+	bool "Automatically broadcast NodeInfo"
+	default y
+	help
+	  Periodically broadcast NodeInfo after meshtastic_init() so peers
+	  (including nodes that join later) learn about this node.
+
+config MESHTASTIC_NODEINFO_START_DELAY_SEC
+	int "Delay before the first NodeInfo broadcast in seconds"
+	default 30
+	range 0 3600
+	depends on MESHTASTIC_NODEINFO_AUTO_SEND
+	help
+	  Time to wait after meshtastic_init() before the first NodeInfo
+	  broadcast, giving the radio and network time to settle.
+
+config MESHTASTIC_NODEINFO_INTERVAL_SEC
+	int "NodeInfo broadcast interval in seconds"
+	default 10800
+	range 3600 86400
+	depends on MESHTASTIC_NODEINFO_AUTO_SEND
+	help
+	  Interval between automatic NodeInfo broadcasts. The upstream
+	  Meshtastic default is 3 hours (10800 s); broadcasting more than
+	  once an hour is discouraged to limit channel utilisation.
+
+config MESHTASTIC_NODEINFO_PEER_CACHE_SIZE
+	int "NodeInfo peer cache size"
+	default 16
+	range 4 64
+	help
+	  Number of peers tracked in RAM for ad-hoc NodeInfo behavior. Peers
+	  with known User records do not trigger automatic NodeInfo requests.
+
+config MESHTASTIC_NODEINFO_UNKNOWN_SUPPRESS_SEC
+	int "Unknown-peer NodeInfo request suppression interval"
+	default 600
+	range 60 86400
+	help
+	  Minimum time before asking the same unknown peer for NodeInfo again.
+
+config MESHTASTIC_NODEINFO_REPLY_SUPPRESS_SEC
+	int "NodeInfo response suppression interval"
+	default 43200
+	range 60 86400
+	help
+	  Minimum time before replying again to the same peer's NodeInfo
+	  want_response request.
+
+endif # MESHTASTIC_NODEINFO

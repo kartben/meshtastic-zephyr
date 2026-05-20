@@ -1,0 +1,70 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+DT_CHOSEN_Z_MESHTASTIC_UART := zephyr,meshtastic-uart
+
+menuconfig MESHTASTIC_SERIAL
+	bool "Meshtastic serial PhoneAPI transport"
+	depends on SERIAL
+	depends on UART_INTERRUPT_DRIVEN
+	depends on $(dt_chosen_enabled,$(DT_CHOSEN_Z_MESHTASTIC_UART))
+	select MESHTASTIC_PHONEAPI
+	help
+	  Expose the Meshtastic PhoneAPI on the UART selected by the
+	  zephyr,meshtastic-uart devicetree chosen node. The transport uses
+	  stock Meshtastic StreamAPI framing, not COBS.
+
+	  Example overlay:
+
+	    / {
+	        chosen {
+	            zephyr,meshtastic-uart = &uart1;
+	        };
+	    };
+
+	  Prefer a dedicated UART. If this chosen node points at a console,
+	  shell, or logging UART, that output can corrupt phone-app framing.
+
+if MESHTASTIC_SERIAL
+
+config MESHTASTIC_SERIAL_FROMRADIO_QUEUE_SIZE
+	int "Serial FromRadio queue depth"
+	default 48
+	range 8 64
+	help
+	  Number of encoded FromRadio frames retained for the serial phone
+	  client.
+
+config MESHTASTIC_SERIAL_RX_BUF_SIZE
+	int "Serial RX ring buffer size"
+	default 640
+	range 64 4096
+	help
+	  Number of bytes buffered from the UART ISR before the serial worker
+	  decodes StreamAPI frames.
+
+config MESHTASTIC_SERIAL_TX_BUF_SIZE
+	int "Serial TX ring buffer size"
+	default 2048
+	range 256 8192
+	help
+	  Number of bytes queued for interrupt-driven UART transmission.
+
+config MESHTASTIC_SERIAL_WORK_STACK_SIZE
+	int "Serial PhoneAPI work thread stack size"
+	default 4096
+	help
+	  Stack size for deferred frame decoding and ToRadio handling.
+
+config MESHTASTIC_SERIAL_WORK_PRIORITY
+	int "Serial PhoneAPI work thread priority"
+	default 8
+	help
+	  Priority for serial PhoneAPI processing.
+
+endif # MESHTASTIC_SERIAL
+
+comment "Meshtastic serial requires /chosen/zephyr,meshtastic-uart"
+	depends on SERIAL
+	depends on UART_INTERRUPT_DRIVEN
+	depends on !$(dt_chosen_enabled,$(DT_CHOSEN_Z_MESHTASTIC_UART))

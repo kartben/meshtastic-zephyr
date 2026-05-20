@@ -1,0 +1,22 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_NODEDB
+	bool "Meshtastic in-RAM NodeDB"
+	default y
+	help
+	  Track mesh nodes heard by the Meshtastic subsystem in RAM. This
+	  initial implementation is volatile and does not persist entries to
+	  flash.
+
+if MESHTASTIC_NODEDB
+
+config MESHTASTIC_NODEDB_MAX_NODES
+	int "Maximum NodeDB entries"
+	default 16
+	range 1 256
+	help
+	  Maximum number of nodes kept in the in-RAM Meshtastic NodeDB,
+	  including the local node entry.
+
+endif # MESHTASTIC_NODEDB

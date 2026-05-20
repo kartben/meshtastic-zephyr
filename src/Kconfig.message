@@ -1,0 +1,14 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+config MESHTASTIC_MESSAGE
+	bool "Meshtastic text message handling"
+	default y
+	help
+	  Register a port handler for incoming TEXT_MESSAGE_APP (port 1)
+	  packets: log received text and notify applications via
+	  @c MESHTASTIC_EVENT_TEXT_MESSAGE.
+
+	  Duplicate suppression is handled by the core stack
+	  (@kconfig{CONFIG_MESHTASTIC_DUP_CACHE_SIZE}) before packets reach
+	  any module.

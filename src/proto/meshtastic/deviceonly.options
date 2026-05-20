@@ -1,0 +1,11 @@
+# options for nanopb
+# https://jpa.kapsi.fi/nanopb/docs/reference.html#proto-file-options
+
+*NodeInfoLite.channel int_size:8
+*NodeInfoLite.hops_away int_size:8
+*NodeInfoLite.next_hop int_size:8
+*NodeInfoLite.long_name max_size:25
+*NodeInfoLite.short_name max_size:5
+*NodeInfoLite.public_key max_size:32
+*NodeInfoLite.hw_model int_size:8
+*NodeInfoLite.role int_size:8

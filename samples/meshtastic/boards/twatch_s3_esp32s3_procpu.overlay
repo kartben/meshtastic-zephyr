@@ -1,0 +1,15 @@
+/ {
+	aliases {
+		gnss = &gnss;
+		die-temp0 = &coretemp;
+	};
+
+	gnss: gnss {
+		compatible = "zephyr,gnss-emul";
+		status = "okay";
+	};
+};
+
+&coretemp {
+	status = "okay";
+};
