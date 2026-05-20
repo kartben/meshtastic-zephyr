@@ -7,6 +7,48 @@ protobuf schemas used for nanopb generation, and the Meshtastic sample.
 
 The module is intended to be used from a Zephyr west workspace.
 
+Why Zephyr
+**********
+
+This project uses Zephyr because it provides:
+
+* **Portability** across many MCU and radio platforms through a consistent RTOS,
+  devicetree model, and build system.
+* **Modularity** with Kconfig-controlled features so shell, BLE, UART, GNSS,
+  telemetry, and MQTT capabilities can be enabled independently.
+* **Existing drivers and subsystems**, especially Zephyr's LoRa, Bluetooth,
+  networking, logging, and hardware abstraction layers, reducing custom
+  platform code and integration effort.
+
+Meshtastic subsystem
+********************
+
+The Zephyr Meshtastic subsystem implements a wire-compatible subset of the
+`Meshtastic <https://meshtastic.org>`_ LoRa mesh protocol on top of Zephyr's
+raw LoRa driver API.
+
+Key features include:
+
+* Exchange text messages with Meshtastic-compatible radios on the LongFast
+  channel.
+* Send and receive raw application payloads through the public C API.
+* Configure channels, device role, and rebroadcast policy at runtime.
+* Connect phone or host tools through shell, BLE PhoneAPI, UART PhoneAPI, or
+  MQTT gateway support.
+* Advertise optional GNSS position, telemetry, NodeInfo, and NodeDB data.
+
+Optional integrations:
+
+* **Shell** (``CONFIG_SHELL`` + ``CONFIG_MESHTASTIC_SHELL``): local inspection
+  and control commands such as ``meshtastic status`` and ``meshtastic text send``.
+* **BLE PhoneAPI** (``CONFIG_MESHTASTIC_BLE``): connect from the Meshtastic
+  mobile app.
+* **UART PhoneAPI** (``CONFIG_MESHTASTIC_SERIAL``): connect host tools over a
+  selected UART (prefer a dedicated UART to avoid stream corruption).
+* **MQTT gateway** (``CONFIG_MESHTASTIC_MQTT``): bridge mesh traffic to a
+  Meshtastic-compatible MQTT broker (see the `official Meshtastic MQTT docs
+  <https://meshtastic.org/docs/software/integrations/mqtt/>`_).
+
 Usage
 *****
 
