@@ -1,0 +1,8 @@
+name: meshtastic-zephyr
+build:
+  cmake: .
+  kconfig: Kconfig
+samples:
+  - samples
+# tests:
+#   - tests

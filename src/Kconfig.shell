@@ -1,0 +1,34 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_SHELL
+	bool "Meshtastic shell commands"
+	depends on SHELL
+	help
+	  Add a "meshtastic" shell command group for status, text send,
+	  app-port send, and optional gnss/metrics/environment send
+	  subcommands when the corresponding Meshtastic features are enabled.
+
+if MESHTASTIC_SHELL
+
+config MESHTASTIC_SHELL_WORK_STACK_SIZE
+	int "Meshtastic shell work thread stack size"
+	default 3072
+	help
+	  Stack size for deferred shell commands that may block on LoRa TX or
+	  protobuf encoding.
+
+config MESHTASTIC_SHELL_WORK_PRIORITY
+	int "Meshtastic shell work thread priority"
+	default 8
+	help
+	  Priority for deferred Meshtastic shell command handling.
+
+config MESHTASTIC_SHELL_QUEUE_SIZE
+	int "Meshtastic shell command queue depth"
+	default 4
+	range 1 16
+	help
+	  Number of deferred shell commands that can be queued.
+
+endif # MESHTASTIC_SHELL

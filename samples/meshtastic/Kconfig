@@ -1,0 +1,6 @@
+# Sample-specific configuration options.
+#
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+source "Kconfig.zephyr"

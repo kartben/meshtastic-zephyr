@@ -1,0 +1,34 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_DEVICE_METRICS
+	bool "Meshtastic device metrics telemetry"
+	default y
+	help
+	  Enable Telemetry.device_metrics encoding and send helpers. Uptime is
+	  always included.
+
+if MESHTASTIC_DEVICE_METRICS
+
+config MESHTASTIC_DEVICE_METRICS_AUTO_SEND
+	bool "Automatically send device metrics"
+	default y
+	help
+	  Send device metrics periodically after meshtastic_init().
+
+config MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC
+	int "Device metrics send interval in seconds"
+	default 900
+	range 30 86400
+	help
+	  Interval between automatic device metrics Telemetry packets.
+
+config MESHTASTIC_FUEL_GAUGE
+	bool "Include battery metrics from fuel_gauge0"
+	depends on FUEL_GAUGE
+	help
+	  If devicetree alias fuel_gauge0 exists and is ready, include state
+	  of charge and voltage in DeviceMetrics when the driver supports
+	  those properties.
+
+endif # MESHTASTIC_DEVICE_METRICS

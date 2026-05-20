@@ -1,0 +1,23 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_TELEMETRY_WANT_RESPONSE
+	bool "Reply to incoming telemetry want_response requests"
+	default y
+	depends on MESHTASTIC_DEVICE_METRICS || MESHTASTIC_ENVIRONMENT_METRICS
+	help
+	  Register port-67 alloc_reply handlers in the device-metrics and
+	  environment-metrics modules (matching upstream DeviceTelemetryModule
+	  and EnvironmentTelemetryModule on TELEMETRY_APP).
+
+if MESHTASTIC_TELEMETRY_WANT_RESPONSE
+
+config MESHTASTIC_TELEMETRY_REPLY_SUPPRESS_SEC
+	int "Minimum seconds between telemetry want_response replies per peer"
+	default 180
+	range 0 86400
+	help
+	  Rate-limit responses to incoming Telemetry requests with
+	  want_response set.
+
+endif # MESHTASTIC_TELEMETRY_WANT_RESPONSE

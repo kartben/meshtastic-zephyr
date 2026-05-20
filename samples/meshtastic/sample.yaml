@@ -1,0 +1,32 @@
+sample:
+  name: Meshtastic
+  description: >
+    Demonstrates the Meshtastic mesh radio stack: initialises the default
+    LongFast channel, prints received text messages, and broadcasts a
+    greeting every 30 seconds.
+common:
+  build_only: true
+  integration_platforms:
+    - twatch_s3/esp32s3/procpu
+    - arduino_giga_r1/stm32h747xx/m7
+tests:
+  sample.meshtastic:
+    tags:
+      - lora
+      - meshtastic
+    platform_allow:
+      - twatch_s3/esp32s3/procpu
+      - arduino_giga_r1/stm32h747xx/m7
+    extra_args:
+      - platform:arduino_giga_r1/stm32h747xx/m7:SHIELD=semtech_sx1262mb2das
+  sample.meshtastic.settings:
+    tags:
+      - lora
+      - meshtastic
+      - settings
+    platform_allow:
+      - twatch_s3/esp32s3/procpu
+      - arduino_giga_r1/stm32h747xx/m7
+    extra_args:
+      - platform:arduino_giga_r1/stm32h747xx/m7:SHIELD=semtech_sx1262mb2das
+      - EXTRA_CONF_FILE=overlay-settings.conf

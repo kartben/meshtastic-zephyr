@@ -1,0 +1,133 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menu "Meshtastic core"
+
+config MESHTASTIC_THREAD_STACK_SIZE
+	int "Processing thread stack size (bytes)"
+	default 8192 if MESHTASTIC_BLE
+	default 6144 if MESHTASTIC_GNSS || MESHTASTIC_DEVICE_METRICS || \
+		MESHTASTIC_ENVIRONMENT_METRICS || MESHTASTIC_NODEINFO
+	default 4096
+	help
+	  Stack size for the Meshtastic packet-processing thread.  Must
+	  accommodate nanopb decoding, PSA crypto and the relay/auto-reply
+	  transmit path.  Increase if stack overflows are observed.
+
+config MESHTASTIC_THREAD_PRIORITY
+	int "Processing thread priority"
+	default 7
+	help
+	  Cooperative (negative) or preemptive (non-negative) priority of the
+	  Meshtastic packet-processing thread.
+
+config MESHTASTIC_RX_QUEUE_DEPTH
+	int "Receive hand-off queue depth (frames)"
+	default 4
+	range 2 16
+	help
+	  Number of raw LoRa frames buffered between the driver receive
+	  callback and the processing thread.  Each slot consumes about
+	  260 bytes of RAM.  Increase if rx_dropped climbs under bursty
+	  traffic (the processing thread fell behind incoming packets).
+
+config MESHTASTIC_RX_REARM_RETRY_MS
+	int "Receive re-arm retry interval (ms)"
+	default 1000
+	help
+	  If re-arming continuous receive after a transmit fails, the radio
+	  is left deaf.  The processing thread retries the re-arm at this
+	  interval until it succeeds.
+
+config MESHTASTIC_PACKET_HEXDUMP
+	bool "Hex dump LoRa wire packets at DBG log level"
+	default MESHTASTIC_LOG_LEVEL_DBG
+	help
+	  When enabled and the meshtastic log level is DBG, log a hex dump of
+	  each Meshtastic wire packet (16-byte header plus encrypted payload)
+	  on transmit and receive.
+
+config MESHTASTIC_DEFAULT_HOP_LIMIT
+	int "Default hop limit for outgoing packets"
+	default 3
+	range 1 7
+	help
+	  Number of times an outgoing packet may be relayed by intermediate
+	  nodes.  3 is the Meshtastic firmware default; higher values increase
+	  range at the cost of additional channel utilisation.
+
+config MESHTASTIC_TX_POWER
+	int "Default TX power (dBm)"
+	default 17
+	help
+	  Default LoRa transmit power used when meshtastic_config.tx_power is
+	  zero.  Most LoRa modules support 2–20 dBm; consult your hardware
+	  datasheet for the allowed range.
+
+config MESHTASTIC_DUP_CACHE_SIZE
+	int "Duplicate-packet cache size (entries)"
+	default 16
+	range 4 64
+	help
+	  Number of (src, packet_id) pairs retained for duplicate suppression.
+	  Each entry consumes 8 bytes of RAM.  Increase if duplicate packets
+	  are observed in dense mesh deployments.
+
+config MESHTASTIC_NODE_LONG_NAME
+	string "Default node long name"
+	default "Zephyr Meshtastic"
+	help
+	  Human-readable node name used when meshtastic_config.long_name is
+	  NULL. This is reported through local APIs such as Bluetooth PhoneAPI.
+
+config MESHTASTIC_NODE_SHORT_NAME
+	string "Default node short name"
+	default "ZEPH"
+	help
+	  Short node name used when meshtastic_config.short_name is NULL.
+
+choice MESHTASTIC_NODE_ID_SOURCE
+	prompt "Node ID source"
+	default MESHTASTIC_NODE_ID_HWINFO if HWINFO_HAS_DRIVER
+	default MESHTASTIC_NODE_ID_CUSTOM
+	help
+	  How the local 32-bit Meshtastic node ID is determined at init time.
+
+config MESHTASTIC_NODE_ID_HWINFO
+	bool "HWINFO device ID"
+	depends on HWINFO_HAS_DRIVER
+	help
+	  Derive the node ID from the last four bytes of the value returned by
+	  hwinfo_get_device_id().  Requires CONFIG_HWINFO.
+
+#config MESHTASTIC_NODE_ID_BT_MAC
+#	bool "Bluetooth identity address"
+#	depends on BT
+#	help
+#	  Derive the node ID from the last four bytes of the default Bluetooth
+#	  identity address (bt_id_get).
+#
+#config MESHTASTIC_NODE_ID_WIFI_MAC
+#	bool "Wi-Fi link-layer address"
+#	depends on NET_IF
+#	help
+#	  Derive the node ID from the last four bytes of the default network
+#	  interface link-layer address.
+
+config MESHTASTIC_NODE_ID_CUSTOM
+	bool "Custom fixed value"
+	help
+	  Use meshtastic_config.node_id when non-zero, otherwise
+	  CONFIG_MESHTASTIC_NODE_ID_DEFAULT.
+
+endchoice
+
+config MESHTASTIC_NODE_ID_DEFAULT
+	hex "Default node ID (custom source)"
+	depends on MESHTASTIC_NODE_ID_CUSTOM
+	default 0xDEADBEEF
+	help
+	  Node ID used when MESHTASTIC_NODE_ID_CUSTOM is selected and
+	  meshtastic_config.node_id is zero.
+
+endmenu

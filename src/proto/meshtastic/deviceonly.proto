@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package meshtastic;
+
+import "meshtastic/mesh.proto";
+import "meshtastic/config.proto";
+import "meshtastic/telemetry.proto";
+
+option csharp_namespace = "Meshtastic.Protobufs";
+option go_package = "github.com/meshtastic/go/generated";
+option java_outer_classname = "DeviceOnly";
+option java_package = "org.meshtastic.proto";
+option swift_prefix = "";
+
+/*
+ * Reduced Zephyr subset of the upstream Meshtastic device-only schema.
+ *
+ * These messages are not sent over LoRa. The in-RAM NodeDB uses them as an
+ * upstream-shaped internal representation, while public Zephyr APIs expose
+ * stable snapshot structs instead of generated nanopb types.
+ */
+
+message PositionLite {
+  sfixed32 latitude_i = 1;
+  sfixed32 longitude_i = 2;
+  int32 altitude = 3;
+  fixed32 time = 4;
+  Position.LocSource location_source = 5;
+  uint32 precision_bits = 6;
+}
+
+message NodeInfoLite {
+  uint32 num = 1;
+
+  reserved 2, 3;
+  reserved "user", "position";
+
+  float snr = 4;
+  fixed32 last_heard = 5;
+
+  reserved 6;
+  reserved "device_metrics";
+
+  uint32 channel = 7;
+
+  reserved 8, 10, 11;
+  reserved "via_mqtt", "is_favorite", "is_ignored";
+
+  optional uint32 hops_away = 9;
+  uint32 next_hop = 12;
+  uint32 bitfield = 13;
+
+  string long_name = 14;
+  string short_name = 15;
+  HardwareModel hw_model = 16;
+  Config.DeviceConfig.Role role = 17;
+  bytes public_key = 18;
+}
+
+message NodePositionEntry {
+  uint32 num = 1;
+  PositionLite position = 2;
+}
+
+message NodeTelemetryEntry {
+  uint32 num = 1;
+  DeviceMetrics device_metrics = 2;
+}
+
+message NodeEnvironmentEntry {
+  uint32 num = 1;
+  EnvironmentMetrics environment_metrics = 2;
+}
+
+message NodeStatusEntry {
+  uint32 num = 1;
+  StatusMessage status = 2;
+}
+
+message NodeDatabase {
+  uint32 version = 1;
+  repeated NodeInfoLite nodes = 2;
+  repeated NodePositionEntry positions = 3;
+  repeated NodeTelemetryEntry telemetry = 4;
+  repeated NodeStatusEntry status = 5;
+  repeated NodeEnvironmentEntry environment = 6;
+}

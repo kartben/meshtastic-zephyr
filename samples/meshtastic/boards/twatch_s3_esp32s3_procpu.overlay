@@ -1,0 +1,62 @@
+/ {
+	aliases {
+		gnss = &gnss;
+		die-temp0 = &coretemp;
+	};
+
+	gnss: gnss {
+		compatible = "zephyr,gnss-emul";
+		status = "okay";
+	};
+};
+
+&coretemp {
+	status = "okay";
+};
+
+
+/* Drop when https://github.com/zephyrproject-rtos/zephyr/pull/109507 merges */
+
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/lora/sx126x.h>
+
+/ {
+	aliases {
+		lora0 = &lora0;
+	};
+};
+
+&pinctrl {
+	spim2_default: spim2_default {
+		group1 {
+			pinmux = <SPIM2_SCLK_GPIO3>,
+				 <SPIM2_MISO_GPIO4>;
+		};
+
+		group2 {
+			pinmux = <SPIM2_MOSI_GPIO1>;
+			output-low;
+		};
+	};
+};
+
+&spi2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	pinctrl-0 = <&spim2_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+
+	lora0: lora@0 {
+		compatible = "semtech,sx1262";
+		reg = <0>;
+		reset-gpios = <&gpio0 8 (GPIO_OPEN_DRAIN | GPIO_ACTIVE_LOW)>;
+		busy-gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+		dio1-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+		dio2-tx-enable;
+		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_3V0>;
+		tcxo-power-startup-delay-ms = <5>;
+		spi-max-frequency = <4000000>;
+	};
+};

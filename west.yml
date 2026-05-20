@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  self:
+    path: .
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: main
+      clone-depth: 1
+      import:
+        name-allowlist:
+          - cmsis
+          - cmsis_6
+          - hal_espressif
+          - hal_stm32
+          - hal_xtensa
+          - mbedtls
+          - tf-psa-crypto
+          - nanopb
+          - picolibc
+          - loramac-node # drop me eventually, not used but there's a kconfig issue preventing
+                         # build when HAS_SEMTECH_SX126X=y but module is not present, even when
+                         # using native lora backend

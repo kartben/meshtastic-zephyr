@@ -1,0 +1,60 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_GNSS
+	bool "Meshtastic GNSS position service"
+	depends on GNSS
+	help
+	  Subscribe to Zephyr GNSS data and send Meshtastic Position payloads.
+
+if MESHTASTIC_GNSS
+
+config MESHTASTIC_GNSS_AUTO_SEND
+	bool "Automatically send GNSS fixes"
+	default y
+	help
+	  Send a Position payload whenever a valid GNSS fix is published and
+	  the configured interval has elapsed.
+
+config MESHTASTIC_GNSS_SEND_INTERVAL_SEC
+	int "GNSS position send interval in seconds"
+	default 300
+	range 5 86400
+	help
+	  Minimum interval between successful automatic Position packets.
+
+config MESHTASTIC_GNSS_RETRY_INTERVAL_SEC
+	int "Minimum seconds between failed position send attempts"
+	default 60
+	range 5 3600
+	help
+	  After a failed automatic position transmission, wait at least this
+	  long before trying again. Prevents hammering the radio when the GNSS
+	  driver publishes fixes frequently.
+
+config MESHTASTIC_GNSS_REPLY_SUPPRESS_SEC
+	int "Minimum seconds between Position want_response replies"
+	default 180
+	range 0 86400
+	help
+	  Rate-limit responses to incoming Position requests with want_response
+	  set, matching stock PositionModule behavior.
+
+if MESHTASTIC_GNSS_AUTO_SEND
+
+config MESHTASTIC_GNSS_SEND_WORK_STACK_SIZE
+	int "GNSS position send workqueue stack size"
+	default 2048
+	help
+	  Stack for the dedicated workqueue that sends Position packets
+	  (nanopb encoding and PSA AES-CTR on a full payload buffer).
+
+config MESHTASTIC_GNSS_SEND_WORK_PRIORITY
+	int "GNSS position send workqueue priority"
+	default 8
+	help
+	  Priority for deferred GNSS position transmissions.
+
+endif # MESHTASTIC_GNSS_AUTO_SEND
+
+endif # MESHTASTIC_GNSS

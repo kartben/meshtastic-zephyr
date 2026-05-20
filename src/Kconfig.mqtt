@@ -1,0 +1,153 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_MQTT
+	bool "Meshtastic MQTT gateway bridge"
+	depends on NETWORKING && MQTT_LIB && NET_TCP && NET_SOCKETS && DNS_RESOLVER
+	select NANOPB_ENABLE_MALLOC
+	help
+	  Bridge LoRa mesh packets to a Meshtastic-compatible MQTT broker using
+	  ServiceEnvelope protobuf on msh/.../2/e/... topics.
+
+	  Requires a network interface (Wi-Fi, Ethernet, etc.) in addition to LoRa.
+
+	  Select NANOPB_ENABLE_MALLOC as ServiceEnvelope is dynamically allocated.
+
+if MESHTASTIC_MQTT
+
+config MESHTASTIC_MQTT_BROKER_HOST
+	string "MQTT broker hostname"
+	default "mqtt.meshtastic.org"
+	help
+	  MQTT broker address without port. For the public Meshtastic broker use
+	  mqtt.meshtastic.org with the default credentials below.
+
+config MESHTASTIC_MQTT_BROKER_PORT
+	int "MQTT broker port"
+	default 1883
+	range 1 65535
+
+config MESHTASTIC_MQTT_USERNAME
+	string "MQTT username"
+	default "meshdev"
+	help
+	  Default meshdev matches the public mqtt.meshtastic.org broker.
+
+config MESHTASTIC_MQTT_PASSWORD
+	string "MQTT password"
+	default "large4cats"
+	help
+	  Default large4cats matches the public mqtt.meshtastic.org broker.
+
+config MESHTASTIC_MQTT_ROOT
+	string "MQTT root topic prefix"
+	default "msh/EU_868"
+	help
+	  Root topic prefix prepended to /2/e/... paths. Use msh/US or msh/EU_868
+	  (or your region) for the public Meshtastic broker.
+
+config MESHTASTIC_MQTT_ENCRYPTION_ENABLED
+	bool "Publish encrypted MeshPackets to MQTT"
+	default y
+	help
+	  When enabled, ServiceEnvelope carries encrypted MeshPacket payloads
+	  (wire-compatible with official firmware). Downlink rejects decoded
+	  packets when this is set.
+
+config MESHTASTIC_MQTT_UPLINK_ENABLED
+	bool "Uplink mesh packets to MQTT"
+	default y
+	help
+	  Publish packets heard on LoRa (and locally transmitted) to the broker.
+
+config MESHTASTIC_MQTT_DOWNLINK_ENABLED
+	bool "Downlink MQTT packets to mesh"
+	default y
+	help
+	  Subscribe to the channel topic and inject received ServiceEnvelopes
+	  onto the local mesh.
+
+config MESHTASTIC_MQTT_IGNORE_MQTT
+	bool "Ignore packets that arrived via MQTT"
+	default n
+	help
+	  When enabled, drop LoRa packets that have the via_mqtt flag set
+	  (matches config.lora.ignore_mqtt in official firmware).
+
+config MESHTASTIC_MQTT_THREAD_STACK_SIZE
+	int "MQTT worker thread stack size"
+	default 4096
+
+config MESHTASTIC_MQTT_THREAD_PRIORITY
+	int "MQTT worker thread priority"
+	default 10
+	help
+	  Priority for the MQTT broker worker. This should normally be lower
+	  priority than LoRa packet processing and local command workers so
+	  connected broker I/O cannot delay local mesh sends.
+
+config MESHTASTIC_MQTT_PUBLISH_QUEUE_SIZE
+	int "Offline MQTT publish queue depth"
+	default 32
+	range 4 64
+	help
+	  Encoded MQTT ServiceEnvelope publishes that cannot be written to the
+	  broker immediately are retained here and retried on the MQTT worker
+	  thread. When full, the oldest envelope is dropped so newer mesh
+	  traffic can continue to make progress.
+
+config MESHTASTIC_MQTT_UPLINK_QUEUE_SIZE
+	int "Deferred MQTT uplink encode queue depth"
+	default 16
+	range 4 64
+	depends on MESHTASTIC_MQTT_UPLINK_ENABLED
+	help
+	  Packets to uplink are queued here and processed on the MQTT thread so
+	  LoRa TX/RX and shell commands are not blocked on broker I/O. When
+	  full, the newest packet is dropped before any protobuf or broker work
+	  is attempted.
+
+config MESHTASTIC_MQTT_RECONNECT_INTERVAL_MS
+	int "Reconnect interval when broker is unreachable (ms)"
+	default 5000
+	range 1000 60000
+
+config MESHTASTIC_MQTT_RX_BUFFER_SIZE
+	int "MQTT client RX buffer size"
+	default 1024
+	range 256 4096
+
+config MESHTASTIC_MQTT_TX_BUFFER_SIZE
+	int "MQTT client TX buffer size"
+	default 1024
+	range 256 4096
+
+config MESHTASTIC_MQTT_MAP_REPORT
+	bool "Publish MapReport to MQTT map topic"
+	default n
+	help
+	  Periodically publish an unencrypted MapReport wrapped in a
+	  ServiceEnvelope to {root}/2/map/ (compatible with the public Meshtastic
+	  map). Requires a position fix when location reporting is enabled.
+
+if MESHTASTIC_MQTT_MAP_REPORT
+
+config MESHTASTIC_MQTT_MAP_REPORT_INTERVAL_SEC
+	int "MapReport publish interval (seconds)"
+	default 900
+	range 60 86400
+	help
+	  Minimum interval between map reports. Official firmware defaults to
+	  15 minutes.
+
+config MESHTASTIC_MQTT_MAP_REPORT_POSITION_PRECISION
+	int "MapReport location precision (bits)"
+	default 14
+	range 12 15
+	help
+	  Bits of precision for latitude and longitude in the map report.
+	  Values outside 12-15 are clamped to the default (14).
+
+endif # MESHTASTIC_MQTT_MAP_REPORT
+
+endif # MESHTASTIC_MQTT

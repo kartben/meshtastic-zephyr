@@ -1,0 +1,78 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_BLE
+	bool "Meshtastic Bluetooth PhoneAPI service"
+	depends on BT && BT_PERIPHERAL
+	select MESHTASTIC_PHONEAPI
+	help
+	  Expose the Meshtastic Bluetooth GATT service with toRadio,
+	  fromRadio, fromNum, and logRadio characteristics.
+
+if MESHTASTIC_BLE
+
+config MESHTASTIC_BLE_PAIRING
+	bool "Support phone pairing and bonding"
+	default y
+	select BT_SMP
+	select BT_SMP_APP_PAIRING_ACCEPT
+	help
+	  Enable Bluetooth SMP so mobile apps that initiate bonding can pair
+	  with the Meshtastic BLE service instead of failing with pairing not
+	  supported.
+
+config MESHTASTIC_BLE_FIXED_PASSKEY
+	bool "Use a fixed passkey for Meshtastic app pairing"
+	default n
+	depends on MESHTASTIC_BLE_PAIRING
+	select BT_APP_PASSKEY
+	select BT_SMP_ENFORCE_MITM
+	help
+	  When enabled, use MITM-protected Secure Connections pairing with a
+	  six-digit passkey (default 123456) and report FIXED_PIN to phone
+	  clients. When disabled (default), pairing uses Just Works with no
+	  passkey and phone clients receive NO_PIN in the Bluetooth config.
+
+config MESHTASTIC_BLE_PASSKEY
+	int "Bluetooth pairing passkey"
+	default 123456
+	range 0 999999
+	depends on MESHTASTIC_BLE_FIXED_PASSKEY
+	help
+	  Passkey entered in the Meshtastic mobile app during pairing. Matches
+	  the official firmware fixed_pin default.
+
+config MESHTASTIC_BLE_ADV
+	bool "Start Meshtastic BLE advertising from meshtastic_init"
+	default y
+	help
+	  Start connectable advertising for the Meshtastic service after the
+	  Bluetooth stack is enabled.
+
+config MESHTASTIC_BLE_DEVICE_NAME
+	string "Bluetooth advertising name"
+	default "Zephyr Meshtastic"
+	help
+	  Complete local name included in Meshtastic BLE advertisements.
+
+config MESHTASTIC_BLE_FROMRADIO_QUEUE_SIZE
+	int "FromRadio queue depth"
+	default 48
+	range 8 64
+	help
+	  Number of encoded FromRadio frames retained for Bluetooth clients.
+
+config MESHTASTIC_BLE_WORK_STACK_SIZE
+	int "Bluetooth PhoneAPI work thread stack size"
+	default 4096
+	help
+	  Stack size for deferred ToRadio protobuf decoding and command
+	  handling.
+
+config MESHTASTIC_BLE_WORK_PRIORITY
+	int "Bluetooth PhoneAPI work thread priority"
+	default 8
+	help
+	  Priority for deferred ToRadio command handling.
+
+endif # MESHTASTIC_BLE

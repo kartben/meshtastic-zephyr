@@ -1,0 +1,5 @@
+/ {
+	chosen {
+		zephyr,meshtastic-uart = &board_cdc_acm_uart;
+	};
+};
