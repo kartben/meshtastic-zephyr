@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     name: Build sample
+    outputs:
+      coverage_report: ${{ steps.coverage.outputs.report }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,10 +42,47 @@ jobs:
           ccache-cache-key: ${{ matrix.os }}
 
       - name: Run protocol tests
+        id: protocol_tests
+        working-directory: meshtastic-zephyr
+        shell: bash
+        env:
+          ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+        run: |
+          TWISTER_ARGS="-T tests/protocol -p native_sim/native/64 -v --inline-logs"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            west twister ${TWISTER_ARGS} \
+              --coverage --coverage-tool gcovr --coverage-basedir .
+          else
+            west twister ${TWISTER_ARGS}
+          fi
+
+      - name: Generate protocol coverage report
+        id: coverage
+        if: always() && runner.os == 'Linux'
         working-directory: meshtastic-zephyr
         shell: bash
         run: |
-          west twister -T tests/protocol -p native_sim/native/64 -v --inline-logs
+          if [ -f twister-out/coverage.json ]; then
+            TRACE_ARGS=(--add-tracefile twister-out/coverage.json)
+            if [ -f twister-out/ztest.json ]; then
+              TRACE_ARGS+=(--add-tracefile twister-out/ztest.json)
+            fi
+            gcovr -r . -v --merge-mode-functions=separate \
+              --gcov-object-directory twister-out \
+              "${TRACE_ARGS[@]}" \
+              --markdown coverage-report.md
+          else
+            printf '%s\n\n%s\n' '## Protocol test coverage' \
+              '_Coverage data not available._' > coverage-report.md
+          fi
+
+          {
+            echo 'report<<EOF'
+            cat coverage-report.md
+            echo 'EOF'
+          } >> "${GITHUB_OUTPUT}"
+
+          cat coverage-report.md >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Build sample
         working-directory: meshtastic-zephyr
