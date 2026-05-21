@@ -15,6 +15,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
+#define ROUTING_REPLY_HOP_MARGIN 2U
+
 static bool packet_is_to_us(const struct meshtastic_packet *packet)
 {
 	return packet != NULL &&
@@ -23,16 +25,46 @@ static bool packet_is_to_us(const struct meshtastic_packet *packet)
 
 static uint8_t routing_hop_limit_for_reply(const struct meshtastic_packet *req)
 {
-	if (req->hop_start > 0U && req->hop_start == req->hop_limit) {
+	int16_t hops_used;
+
+	if (req == NULL) {
+		return mt.hop_limit;
+	}
+
+	if (req->hop_start == 0U) {
 		return 0U;
 	}
 
-	if (req->hop_start > 0U && req->hop_start > req->hop_limit &&
-	    (req->hop_start - req->hop_limit + 2U) < mt.hop_limit) {
-		return (uint8_t)(req->hop_start - req->hop_limit + 2U);
+	if (req->hop_start < req->hop_limit) {
+		return mt.hop_limit;
+	}
+
+	hops_used = (int16_t)req->hop_start - (int16_t)req->hop_limit;
+	if (hops_used > (int16_t)mt.hop_limit) {
+		return (uint8_t)hops_used;
+	}
+
+	/*
+	 * Match upstream reply routing: use the return path we observed, plus a
+	 * small margin because the route back may differ slightly.
+	 */
+	if ((uint8_t)(hops_used + ROUTING_REPLY_HOP_MARGIN) < mt.hop_limit) {
+		return (uint8_t)(hops_used + ROUTING_REPLY_HOP_MARGIN);
 	}
 
 	return mt.hop_limit;
+}
+
+static bool routing_ack_should_request_ack(const struct meshtastic_packet *req)
+{
+	/*
+	 * Mirror Meshtastic firmware's special case for direct text messages:
+	 * request an ACK for the ROUTING ACK itself so DMs get reliable delivery
+	 * confirmation back to the sender.
+	 */
+	return req != NULL && req->want_ack && req->to == mt.node_id &&
+	       (req->portnum == MESHTASTIC_PORT_TEXT_MESSAGE ||
+		req->portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP);
 }
 
 static int routing_send_ack(const struct meshtastic_packet *req)
@@ -59,7 +91,7 @@ static int routing_send_ack(const struct meshtastic_packet *req)
 	mesh.channel = ch_index;
 	mesh.hop_limit = routing_hop_limit_for_reply(req);
 	mesh.hop_start = mesh.hop_limit;
-	mesh.want_ack = false;
+	mesh.want_ack = routing_ack_should_request_ack(req);
 	mesh.which_payload_variant = meshtastic_MeshPacket_decoded_tag;
 	mesh.decoded.portnum = meshtastic_PortNum_ROUTING_APP;
 	mesh.decoded.request_id = req->id;
@@ -75,7 +107,8 @@ static int routing_send_ack(const struct meshtastic_packet *req)
 
 	mesh.decoded.payload.size = (pb_size_t)stream.bytes_written;
 
-	LOG_DBG("Sending ROUTING ACK to 0x%08x for id=0x%08x ch=%u", mesh.to, req->id, ch_index);
+	LOG_DBG("Sending ROUTING ACK to 0x%08x for id=0x%08x ch=%u want_ack=%u hop_limit=%u",
+		mesh.to, req->id, ch_index, mesh.want_ack ? 1U : 0U, mesh.hop_limit);
 
 	return meshtastic_send_mesh_pb(&mesh);
 }
