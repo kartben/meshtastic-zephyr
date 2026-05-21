@@ -15,6 +15,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
+#define ROUTING_REPLY_HOP_MARGIN 2U
+
 static bool packet_is_to_us(const struct meshtastic_packet *packet)
 {
 	return packet != NULL &&
@@ -42,8 +44,12 @@ static uint8_t routing_hop_limit_for_reply(const struct meshtastic_packet *req)
 		return (uint8_t)hops_used;
 	}
 
-	if ((uint8_t)(hops_used + 2) < mt.hop_limit) {
-		return (uint8_t)(hops_used + 2);
+	/*
+	 * Match upstream reply routing: use the return path we observed, plus a
+	 * small margin because the route back may differ slightly.
+	 */
+	if ((uint8_t)(hops_used + ROUTING_REPLY_HOP_MARGIN) < mt.hop_limit) {
+		return (uint8_t)(hops_used + ROUTING_REPLY_HOP_MARGIN);
 	}
 
 	return mt.hop_limit;
@@ -51,6 +57,11 @@ static uint8_t routing_hop_limit_for_reply(const struct meshtastic_packet *req)
 
 static bool routing_ack_should_request_ack(const struct meshtastic_packet *req)
 {
+	/*
+	 * Mirror Meshtastic firmware's special case for direct text messages:
+	 * request an ACK for the ROUTING ACK itself so DMs get reliable delivery
+	 * confirmation back to the sender.
+	 */
 	return req != NULL && req->want_ack && req->to == mt.node_id &&
 	       (req->portnum == MESHTASTIC_PORT_TEXT_MESSAGE ||
 		req->portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP);
