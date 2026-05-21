@@ -60,3 +60,7 @@
 		spi-max-frequency = <4000000>;
 	};
 };
+
+&wifi {
+	status = "okay";
+};
