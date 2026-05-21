@@ -2,6 +2,8 @@ name: Build
 
 on:
   push:
+    branches:
+    - main
   pull_request:
   schedule:
     - cron: "0 0 * * *"
@@ -35,6 +37,12 @@ jobs:
           app-path: meshtastic-zephyr
           toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
           ccache-cache-key: ${{ matrix.os }}
+
+      - name: Run protocol tests
+        working-directory: meshtastic-zephyr
+        shell: bash
+        run: |
+          west twister -T tests/protocol -p native_sim/native/64 -v --inline-logs
 
       - name: Build sample
         working-directory: meshtastic-zephyr
