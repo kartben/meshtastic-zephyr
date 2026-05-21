@@ -66,7 +66,7 @@ void meshtastic_dispatch_modules(const struct meshtastic_packet *packet)
 	meshtastic_packet_set_reply_to(&reply, packet);
 
 	LOG_INF("Module '%s' sending want_response reply", handler->name);
-	ret = meshtastic_send_packet(&reply);
+	ret = meshtastic_send_packet(&reply, K_NO_WAIT);
 	if (ret < 0) {
 		LOG_WRN("Reply send failed (%d)", ret);
 	}

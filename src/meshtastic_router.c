@@ -13,12 +13,12 @@
 #include <zephyr/sys/util.h>
 
 #include "meshtastic_channels.h"
+#include "meshtastic_core.h"
 #include "meshtastic_modules.h"
+#include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
 
-#if defined(CONFIG_MESHTASTIC_MQTT)
 #include "meshtastic_mqtt.h"
-#endif
 #include "meshtastic_phoneapi.h"
 #include "meshtastic_router.h"
 

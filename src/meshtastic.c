@@ -26,17 +26,12 @@
 #include "meshtastic_channels.h"
 #include "meshtastic_config_store.h"
 #include "meshtastic_core.h"
+#include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
 
-#if defined(CONFIG_MESHTASTIC_SETTINGS)
 #include "meshtastic_settings.h"
-#endif
-#if defined(CONFIG_MESHTASTIC_GNSS)
 #include "meshtastic_gnss.h"
-#endif
-#if defined(CONFIG_MESHTASTIC_MQTT)
 #include "meshtastic_mqtt.h"
-#endif
 
 #if defined(CONFIG_MESHTASTIC_BLE)
 int meshtastic_ble_init(void);
@@ -394,10 +389,9 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	return 0;
 }
 
-int meshtastic_send_packet(const struct meshtastic_packet *packet)
+static int send_packet_prepare(const struct meshtastic_packet *packet,
+			       struct meshtastic_packet *local, uint8_t *wire, uint32_t *pkt_len)
 {
-	struct meshtastic_packet local;
-	uint32_t pkt_len = 0U;
 	int ret;
 
 	if (!mt.initialized) {
@@ -411,53 +405,75 @@ int meshtastic_send_packet(const struct meshtastic_packet *packet)
 		return -EINVAL;
 	}
 
-	local = *packet;
-	if (local.from == 0U) {
-		local.from = mt.node_id;
+	*local = *packet;
+	if (local->from == 0U) {
+		local->from = mt.node_id;
 	}
-	if (local.id == 0U) {
-		local.id = meshtastic_allocate_packet_id();
+	if (local->id == 0U) {
+		local->id = meshtastic_allocate_packet_id();
 	}
-	if (local.hop_limit == 0U) {
-		local.hop_limit = mt.hop_limit;
+	if (local->hop_limit == 0U) {
+		local->hop_limit = mt.hop_limit;
 	}
-	if (local.hop_start == 0U) {
-		local.hop_start = local.hop_limit;
+	if (local->hop_start == 0U) {
+		local->hop_start = local->hop_limit;
 	}
-	if (local.channel_index == MESHTASTIC_CHANNEL_INDEX_INVALID) {
-		local.channel_index = meshtastic_channels_primary_index();
+	if (local->channel_index == MESHTASTIC_CHANNEL_INDEX_INVALID) {
+		local->channel_index = meshtastic_channels_primary_index();
 	}
 
 	k_mutex_lock(&mt_ws.lock, K_FOREVER);
-	ret = meshtastic_build_wire_packet(&local, mt_ws.wire, &pkt_len);
-	if (ret == 0) {
-		ret = meshtastic_radio_send_wire(mt_ws.wire, pkt_len);
+	ret = meshtastic_build_wire_packet(local, wire, pkt_len);
+	k_mutex_unlock(&mt_ws.lock);
+
+	return ret;
+}
+
+static int send_packet_complete(const struct meshtastic_packet *local, const uint8_t *wire,
+				uint32_t pkt_len, int tx_ret, bool emit_done)
+{
+	if (tx_ret < 0) {
+		LOG_ERR("Packet send failed (%d)", tx_ret);
+		return tx_ret;
 	}
-	if (ret < 0) {
-		k_mutex_unlock(&mt_ws.lock);
-		LOG_ERR("Packet send failed (%d)", ret);
-		return ret;
+
+	if (!emit_done) {
+		return 0;
 	}
 
-	{
-		uint8_t wire_copy[MESHTASTIC_PKT_MAX];
-
-		memcpy(wire_copy, mt_ws.wire, pkt_len);
-		k_mutex_unlock(&mt_ws.lock);
-
-		LOG_INF("TX to 0x%08x port=%u len=%u", local.to, (unsigned int)local.portnum,
-			(unsigned int)pkt_len);
-		meshtastic_emit_event(MESHTASTIC_EVENT_TX_DONE, 0, &local);
+	LOG_INF("TX to 0x%08x port=%u len=%u", local->to, (unsigned int)local->portnum,
+		(unsigned int)pkt_len);
+	meshtastic_emit_event(MESHTASTIC_EVENT_TX_DONE, 0, local);
 #if defined(CONFIG_MESHTASTIC_MQTT)
-		meshtastic_mqtt_on_tx(&local, wire_copy, pkt_len);
+	meshtastic_mqtt_on_tx(local, wire, pkt_len);
 #endif
-	}
 
 	return 0;
 }
 
+int meshtastic_send_packet(const struct meshtastic_packet *packet, k_timeout_t wait)
+{
+	struct meshtastic_packet local;
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t pkt_len = 0U;
+	int ret;
+
+	ret = send_packet_prepare(packet, &local, wire, &pkt_len);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (K_TIMEOUT_EQ(wait, K_NO_WAIT)) {
+		ret = meshtastic_radio_send_wire(wire, pkt_len);
+	} else {
+		ret = meshtastic_radio_send_wire_wait(wire, pkt_len, wait);
+	}
+
+	return send_packet_complete(&local, wire, pkt_len, ret, K_TIMEOUT_EQ(wait, K_FOREVER));
+}
+
 int meshtastic_send_data(uint32_t dest, uint32_t portnum, const uint8_t *payload,
-			 size_t payload_len)
+			 size_t payload_len, k_timeout_t wait)
 {
 	struct meshtastic_packet packet = {
 		.to = dest,
@@ -466,7 +482,7 @@ int meshtastic_send_data(uint32_t dest, uint32_t portnum, const uint8_t *payload
 		.payload_len = payload_len,
 	};
 
-	return meshtastic_send_packet(&packet);
+	return meshtastic_send_packet(&packet, wait);
 }
 
 int meshtastic_send_text(uint32_t dest, const char *text)
@@ -482,7 +498,8 @@ int meshtastic_send_text(uint32_t dest, const char *text)
 		return -EINVAL;
 	}
 
-	return meshtastic_send_data(dest, MESHTASTIC_PORT_TEXT_MESSAGE, (const uint8_t *)text, len);
+	return meshtastic_send_data(dest, MESHTASTIC_PORT_TEXT_MESSAGE, (const uint8_t *)text, len,
+				    K_FOREVER);
 }
 
 void meshtastic_set_recv_cb(meshtastic_recv_cb_t cb)
@@ -560,18 +577,20 @@ int meshtastic_send_position(uint32_t dest)
 #endif
 
 #if !defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
-int meshtastic_send_device_metrics(uint32_t dest)
+int meshtastic_send_device_metrics(uint32_t dest, k_timeout_t wait)
 {
 	ARG_UNUSED(dest);
+	ARG_UNUSED(wait);
 
 	return -ENOTSUP;
 }
 #endif
 
 #if !defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS)
-int meshtastic_send_environment(uint32_t dest)
+int meshtastic_send_environment(uint32_t dest, k_timeout_t wait)
 {
 	ARG_UNUSED(dest);
+	ARG_UNUSED(wait);
 
 	return -ENOTSUP;
 }

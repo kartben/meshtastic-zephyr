@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <errno.h>
 #include <string.h>
 
 #include <zephyr/devicetree.h>
@@ -10,16 +11,12 @@
 
 #include <pb_encode.h>
 
-#if defined(CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE)
-#include <errno.h>
-#endif
-
-#if defined(CONFIG_MESHTASTIC_FUEL_GAUGE)
 #include <zephyr/drivers/fuel_gauge.h>
-#endif
 
 #include "meshtastic_modules.h"
 #include "meshtastic_telemetry_internal.h"
+
+#include <zephyr/meshtastic/telemetry.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
@@ -79,7 +76,7 @@ int meshtastic_collect_device_metrics(meshtastic_DeviceMetrics *metrics)
 	return 0;
 }
 
-int meshtastic_send_device_metrics(uint32_t dest)
+int meshtastic_send_device_metrics(uint32_t dest, k_timeout_t wait)
 {
 	meshtastic_DeviceMetrics metrics;
 	meshtastic_Telemetry telemetry = meshtastic_Telemetry_init_zero;
@@ -105,7 +102,8 @@ int meshtastic_send_device_metrics(uint32_t dest)
 		return -ENOMEM;
 	}
 
-	return meshtastic_send_data(dest, MESHTASTIC_PORT_TELEMETRY, payload, stream.bytes_written);
+	return meshtastic_send_data(dest, MESHTASTIC_PORT_TELEMETRY, payload, stream.bytes_written,
+				    wait);
 }
 
 #if defined(CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE)
@@ -217,19 +215,43 @@ MESHTASTIC_MODULE_DEFINE(device_telemetry, MESHTASTIC_PORT_TELEMETRY, 0, NULL,
 
 #endif /* CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE */
 
-#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
-static K_THREAD_STACK_DEFINE(metrics_stack, 2048);
-static struct k_thread metrics_thread;
+#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND) ||                                         \
+	(defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                         \
+	 defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND))
+static K_THREAD_STACK_DEFINE(telemetry_stack, 2048);
+static struct k_thread telemetry_thread;
 
-static void metrics_thread_fn(void *p1, void *p2, void *p3)
+static uint32_t telemetry_period_sec(void)
+{
+	uint32_t period = UINT32_MAX;
+
+#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
+	period = MIN(period, (uint32_t)CONFIG_MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC);
+#endif
+#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                              \
+	defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+	period = MIN(period, (uint32_t)CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC);
+#endif
+
+	return period;
+}
+
+static void telemetry_thread_fn(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1);
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
 	while (true) {
-		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC));
-		(void)meshtastic_send_device_metrics(MESHTASTIC_NODE_BROADCAST);
+		k_sleep(K_SECONDS(telemetry_period_sec()));
+
+#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
+		(void)meshtastic_send_device_metrics(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
+#endif
+#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                              \
+	defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+		(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
+#endif
 	}
 }
 #endif
@@ -240,11 +262,13 @@ int meshtastic_metrics_init(void)
 	k_mutex_init(&device_telemetry_state.lock);
 #endif
 
-#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
-	k_thread_create(&metrics_thread, metrics_stack, K_THREAD_STACK_SIZEOF(metrics_stack),
-			metrics_thread_fn, NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0,
+#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND) ||                                         \
+	(defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                         \
+	 defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND))
+	k_thread_create(&telemetry_thread, telemetry_stack, K_THREAD_STACK_SIZEOF(telemetry_stack),
+			telemetry_thread_fn, NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0,
 			K_NO_WAIT);
-	k_thread_name_set(&metrics_thread, "meshtastic_metrics");
+	k_thread_name_set(&telemetry_thread, "meshtastic_telemetry");
 #endif
 
 	return 0;

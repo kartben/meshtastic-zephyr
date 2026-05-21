@@ -30,6 +30,7 @@
 #include <stdbool.h>
 
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -351,22 +352,25 @@ int meshtastic_send_text(uint32_t dest, const char *text);
  * @brief Send a raw Meshtastic data payload.
  *
  * Places @p payload in the @c Data.payload protobuf field, encrypts the
- * message, and transmits it.  Blocks until the radio has finished
- * transmitting.
+ * message, and transmits it.
  *
  * @param dest        Destination node ID, or @ref MESHTASTIC_NODE_BROADCAST.
  * @param portnum     Application port number (see @ref meshtastic_portnum).
  * @param payload     Raw payload bytes.
  * @param payload_len Number of bytes in @p payload (max
  *                    @ref MESHTASTIC_MAX_PAYLOAD_LEN).
+ * @param wait        @c K_FOREVER to block until transmission completes;
+ *                    @c K_NO_WAIT to queue the frame only (-ENOMSG if the TX
+ *                    queue is full).
  *
- * @retval 0        Success.
+ * @retval 0        Success (queued, or transmitted when @p wait blocks).
  * @retval -EINVAL  Invalid arguments or @p payload_len exceeds the limit.
  * @retval -ENOMEM  Protobuf encoding failed.
  * @retval -EIO     Crypto or radio transmission failed.
+ * @retval -ENOMSG  TX queue full (@p wait is @c K_NO_WAIT).
  */
 int meshtastic_send_data(uint32_t dest, uint32_t portnum, const uint8_t *payload,
-			 size_t payload_len);
+			 size_t payload_len, k_timeout_t wait);
 
 /**
  * @brief Send a decoded Meshtastic packet.
@@ -376,13 +380,17 @@ int meshtastic_send_data(uint32_t dest, uint32_t portnum, const uint8_t *payload
  * the corresponding LoRa wire packet.
  *
  * @param packet Packet description.
+ * @param wait   @c K_FOREVER to block until transmission completes;
+ *               @c K_NO_WAIT to queue the frame only (-ENOMSG if the TX
+ *               queue is full).
  *
- * @retval 0        Success.
+ * @retval 0        Success (queued, or transmitted when @p wait blocks).
  * @retval -EINVAL  Invalid arguments or payload too large.
  * @retval -ENOMEM  Protobuf encoding failed.
  * @retval -EIO     Crypto or radio transmission failed.
+ * @retval -ENOMSG  TX queue full (@p wait is @c K_NO_WAIT).
  */
-int meshtastic_send_packet(const struct meshtastic_packet *packet);
+int meshtastic_send_packet(const struct meshtastic_packet *packet, k_timeout_t wait);
 
 /**
  * @brief Register (or deregister) a packet-receive callback.

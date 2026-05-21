@@ -8,9 +8,7 @@
 #include "meshtastic_channels.h"
 #include "meshtastic_core.h"
 
-#if defined(CONFIG_MESHTASTIC_NODEDB)
 #include <zephyr/meshtastic/nodedb.h>
-#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);

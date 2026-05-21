@@ -15,6 +15,7 @@
 #include <zephyr/sys/util.h>
 
 #include "meshtastic_core.h"
+#include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
 #include "meshtastic_router.h"
 
@@ -99,7 +100,7 @@ static uint32_t mt_busy_backoff_ms(void)
 	return min_ms + (sys_rand32_get() % (max_ms - min_ms + 1U));
 }
 
-int meshtastic_radio_send_wire(uint8_t *pkt, uint32_t pkt_len)
+int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 {
 	int ret;
 	int retries;
@@ -239,6 +240,11 @@ int meshtastic_radio_init(void)
 	if (ret < 0) {
 		LOG_ERR("Initial lora_config failed (%d)", ret);
 		return -EIO;
+	}
+
+	ret = meshtastic_outbound_init();
+	if (ret < 0) {
+		return ret;
 	}
 
 	k_thread_create(&mt_thread, mt_stack, K_THREAD_STACK_SIZEOF(mt_stack), mt_thread_fn, NULL,

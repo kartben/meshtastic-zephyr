@@ -105,7 +105,7 @@ static void shell_work_thread_fn(void *p1, void *p2, void *p3)
 					.channel_index = item.channel_index,
 				};
 
-				ret = meshtastic_send_packet(&packet);
+				ret = meshtastic_send_packet(&packet, K_FOREVER);
 			} else {
 				ret = meshtastic_send_text(item.dest, (const char *)item.payload);
 			}
@@ -114,10 +114,10 @@ static void shell_work_thread_fn(void *p1, void *p2, void *p3)
 			ret = meshtastic_send_position(item.dest);
 			break;
 		case SHELL_WORK_SEND_METRICS:
-			ret = meshtastic_send_device_metrics(item.dest);
+			ret = meshtastic_send_device_metrics(item.dest, K_FOREVER);
 			break;
 		case SHELL_WORK_SEND_ENVIRONMENT:
-			ret = meshtastic_send_environment(item.dest);
+			ret = meshtastic_send_environment(item.dest, K_FOREVER);
 			break;
 		case SHELL_WORK_SEND_NODEINFO:
 			ret = meshtastic_send_node_info(item.dest);

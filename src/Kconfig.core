@@ -39,6 +39,21 @@ config MESHTASTIC_RX_REARM_RETRY_MS
 	  is left deaf.  The processing thread retries the re-arm at this
 	  interval until it succeeds.
 
+config MESHTASTIC_OUTBOUND_QUEUE_DEPTH
+	int "Outbound LoRa transmit queue depth (frames)"
+	default 8
+	range 2 32
+	help
+	  Number of wire frames waiting for the outbound transmit worker.
+	  All LoRa TX (application packets, relay, periodic telemetry) is
+	  serialized through this queue.
+
+config MESHTASTIC_OUTBOUND_STACK_SIZE
+	int "Outbound transmit worker stack size (bytes)"
+	default 2048
+	help
+	  Stack for the thread that performs serialized LoRa transmits.
+
 config MESHTASTIC_PACKET_HEXDUMP
 	bool "Hex dump LoRa wire packets at DBG log level"
 	default MESHTASTIC_LOG_LEVEL_DBG

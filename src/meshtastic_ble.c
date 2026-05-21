@@ -18,9 +18,7 @@
 #include "meshtastic_phoneapi.h"
 
 #include <zephyr/logging/log.h>
-#if defined(CONFIG_SETTINGS)
 #include <zephyr/settings/settings.h>
-#endif
 
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 

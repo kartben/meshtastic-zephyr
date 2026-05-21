@@ -143,7 +143,7 @@ int meshtastic_send_node_info_ex(uint32_t dest, bool want_response, uint8_t chan
 		return ret;
 	}
 
-	return meshtastic_send_packet(&packet);
+	return meshtastic_send_packet(&packet, K_FOREVER);
 }
 
 int meshtastic_send_node_info(uint32_t dest)
@@ -202,8 +202,16 @@ static void meshtastic_module_nodeinfo_on_packet(const struct meshtastic_packet 
 	}
 
 	if (should_request) {
+		uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+		struct meshtastic_packet nodeinfo_packet;
+		int send_ret;
+
 		LOG_INF("Heard unknown node 0x%08x, asking for NodeInfo", packet->from);
-		(void)meshtastic_send_node_info_ex(packet->from, true, channel, 0U);
+		send_ret = nodeinfo_build_packet(packet->from, true, channel, 0U, payload,
+						 &nodeinfo_packet);
+		if (send_ret == 0) {
+			(void)meshtastic_send_packet(&nodeinfo_packet, K_NO_WAIT);
+		}
 	}
 }
 

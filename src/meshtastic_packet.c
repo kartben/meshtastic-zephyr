@@ -19,11 +19,10 @@
 #include <pb_encode.h>
 
 #include "meshtastic_channels.h"
+#include "meshtastic_core.h"
+#include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
-
-#if defined(CONFIG_MESHTASTIC_MQTT)
 #include "meshtastic_mqtt.h"
-#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
@@ -600,7 +599,7 @@ int meshtastic_send_mesh_pb(const meshtastic_MeshPacket *mesh)
 			.relay_node = mesh->relay_node,
 		};
 
-		return meshtastic_send_packet(&packet);
+		return meshtastic_send_packet(&packet, K_FOREVER);
 	}
 
 	if (mesh->which_payload_variant != meshtastic_MeshPacket_encrypted_tag) {
@@ -638,33 +637,33 @@ int meshtastic_send_mesh_pb(const meshtastic_MeshPacket *mesh)
 	hdr->relay_node = mesh->relay_node;
 	memcpy(mt_ws.wire + MESHTASTIC_HDR_LEN, mesh->encrypted.bytes, encrypted_len);
 
-	ret = meshtastic_radio_send_wire(mt_ws.wire, MESHTASTIC_HDR_LEN + encrypted_len);
+	{
+		uint8_t wire[MESHTASTIC_PKT_MAX];
+		const uint32_t wire_len = MESHTASTIC_HDR_LEN + encrypted_len;
 
-	if (ret == 0) {
+		memcpy(wire, mt_ws.wire, wire_len);
+		k_mutex_unlock(&mt_ws.lock);
+
+		ret = meshtastic_radio_send_wire_wait(wire, wire_len, K_FOREVER);
+
+		if (ret == 0) {
 #if defined(CONFIG_MESHTASTIC_MQTT)
-		struct meshtastic_packet tx_packet = {
-			.from = (mesh->from != 0U) ? mesh->from : mt.node_id,
-			.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
-			.id = sys_le32_to_cpu(hdr->id),
-			.hop_limit = hop_limit,
-			.hop_start = hop_start,
-			.channel = hdr->channel,
-			.want_ack = mesh->want_ack,
-			.via_mqtt = mesh->via_mqtt,
-			.next_hop = mesh->next_hop,
-			.relay_node = mesh->relay_node,
-		};
-		uint8_t wire_copy[MESHTASTIC_PKT_MAX];
-		size_t wire_len = MESHTASTIC_HDR_LEN + encrypted_len;
+			struct meshtastic_packet tx_packet = {
+				.from = (mesh->from != 0U) ? mesh->from : mt.node_id,
+				.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
+				.id = sys_le32_to_cpu(hdr->id),
+				.hop_limit = hop_limit,
+				.hop_start = hop_start,
+				.channel = hdr->channel,
+				.want_ack = mesh->want_ack,
+				.via_mqtt = mesh->via_mqtt,
+				.next_hop = mesh->next_hop,
+				.relay_node = mesh->relay_node,
+			};
 
-		memcpy(wire_copy, mt_ws.wire, wire_len);
-		k_mutex_unlock(&mt_ws.lock);
-		meshtastic_mqtt_on_tx(&tx_packet, wire_copy, wire_len);
-#else
-		k_mutex_unlock(&mt_ws.lock);
+			meshtastic_mqtt_on_tx(&tx_packet, wire, wire_len);
 #endif
-	} else {
-		k_mutex_unlock(&mt_ws.lock);
+		}
 	}
 
 	return ret;

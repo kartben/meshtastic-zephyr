@@ -2,6 +2,8 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <errno.h>
+
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
@@ -9,10 +11,7 @@
 
 #include <pb_encode.h>
 
-#if defined(CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE)
-#include <errno.h>
-#endif
-
+#include "meshtastic_core.h"
 #include "meshtastic_modules.h"
 #include "meshtastic_telemetry_internal.h"
 
@@ -149,7 +148,7 @@ int meshtastic_collect_environment(meshtastic_EnvironmentMetrics *m)
 #endif /* MT_ENV_ANY */
 }
 
-int meshtastic_send_environment(uint32_t dest)
+int meshtastic_send_environment(uint32_t dest, k_timeout_t wait)
 {
 	meshtastic_EnvironmentMetrics env;
 	meshtastic_Telemetry telemetry = meshtastic_Telemetry_init_zero;
@@ -175,7 +174,8 @@ int meshtastic_send_environment(uint32_t dest)
 		return -ENOMEM;
 	}
 
-	return meshtastic_send_data(dest, MESHTASTIC_PORT_TELEMETRY, payload, stream.bytes_written);
+	return meshtastic_send_data(dest, MESHTASTIC_PORT_TELEMETRY, payload, stream.bytes_written,
+				    wait);
 }
 
 #if defined(CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE)
@@ -286,7 +286,8 @@ MESHTASTIC_MODULE_DEFINE(environment_telemetry, MESHTASTIC_PORT_TELEMETRY, 0, NU
 
 #endif /* CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE */
 
-#if MT_ENV_ANY && defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+#if MT_ENV_ANY && defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND) &&                      \
+	!defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
 static K_THREAD_STACK_DEFINE(env_stack, 2048);
 static struct k_thread env_thread;
 
@@ -298,7 +299,7 @@ static void env_thread_fn(void *p1, void *p2, void *p3)
 
 	while (true) {
 		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC));
-		(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST);
+		(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
 	}
 }
 #endif
@@ -310,7 +311,8 @@ int meshtastic_environment_init(void)
 #endif
 
 #if MT_ENV_ANY
-#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND) &&                                    \
+	!defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
 	k_thread_create(&env_thread, env_stack, K_THREAD_STACK_SIZEOF(env_stack), env_thread_fn,
 			NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(&env_thread, "meshtastic_env");

@@ -447,12 +447,13 @@ ZTEST(protocol_stack, test_invalid_send_inputs_do_not_transmit)
 	zassert_equal(ret, -EINVAL, "empty text should be rejected");
 	ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST, too_long_text);
 	zassert_equal(ret, -EINVAL, "oversized text should be rejected");
-	ret = meshtastic_send_data(0U, MESHTASTIC_PORT_PRIVATE, NULL, 0U);
+	ret = meshtastic_send_data(0U, MESHTASTIC_PORT_PRIVATE, NULL, 0U, K_FOREVER);
 	zassert_equal(ret, -EINVAL, "zero destination should be rejected");
-	ret = meshtastic_send_data(MESHTASTIC_NODE_BROADCAST, MESHTASTIC_PORT_PRIVATE, NULL, 1U);
+	ret = meshtastic_send_data(MESHTASTIC_NODE_BROADCAST, MESHTASTIC_PORT_PRIVATE, NULL, 1U,
+				   K_FOREVER);
 	zassert_equal(ret, -EINVAL, "missing payload should be rejected");
 	ret = meshtastic_send_data(MESHTASTIC_NODE_BROADCAST, MESHTASTIC_PORT_PRIVATE,
-				   too_large_payload, sizeof(too_large_payload));
+				   too_large_payload, sizeof(too_large_payload), K_FOREVER);
 	zassert_equal(ret, -EINVAL, "oversized payload should be rejected");
 
 	assert_mock_send_count(0U);
@@ -466,7 +467,8 @@ ZTEST(protocol_stack, test_zero_length_data_payload_round_trips)
 	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
 	int ret;
 
-	ret = meshtastic_send_data(MESHTASTIC_NODE_BROADCAST, MESHTASTIC_PORT_PRIVATE, NULL, 0U);
+	ret = meshtastic_send_data(MESHTASTIC_NODE_BROADCAST, MESHTASTIC_PORT_PRIVATE, NULL, 0U,
+				   K_FOREVER);
 	zassert_ok(ret, "empty data send failed: %d", ret);
 	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for tx event");
 
@@ -504,7 +506,7 @@ ZTEST(protocol_stack, test_send_packet_preserves_explicit_metadata)
 	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
 	int ret;
 
-	ret = meshtastic_send_packet(&packet);
+	ret = meshtastic_send_packet(&packet, K_FOREVER);
 	zassert_ok(ret, "metadata packet send failed: %d", ret);
 	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for tx event");
 

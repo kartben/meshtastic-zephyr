@@ -163,7 +163,7 @@ int meshtastic_send_position(uint32_t dest)
 		return ret;
 	}
 
-	return meshtastic_send_packet(&packet);
+	return meshtastic_send_packet(&packet, K_FOREVER);
 }
 
 static bool packet_decode_position(const struct meshtastic_packet *packet,
