@@ -1,21 +1,23 @@
-.. _meshtastic-sample:
-
-Meshtastic
-##########
+Meshtastic sample app
+#####################
 
 Overview
 ********
 
-This sample demonstrates the Zephyr-native Meshtastic stack.  It initializes the stack and then
+This sample demonstrates the Zephyr-native Meshtastic stack. It initializes the stack and then
 registers a receive callback that logs incoming text messages and broadcasts a greeting at regular
 interval on the default "LongFast" channel.
 
 Requirements
 ************
 
-* A board with a LoRa transceiver supported by the Zephyr, available as ``lora0`` devicetree alias.
-
+* A board with a supported LoRa transceiver, available as ``lora0`` devicetree alias.
 * The ``nanopb`` module must be present in the west workspace
+
+The sample has been tested with the following boards:
+
+- Arduino GIGA R1 with a Semtech SX1262 shield
+- LilyGO T-Watch Ultra with a Semtech SX1262 shield
 
 Building and Running
 ********************
@@ -45,7 +47,15 @@ When ``CONFIG_MESHTASTIC_SHELL=y``), the following shell commands are available:
 * ``meshtastic device rebroadcast [all|none|local_only|...]`` — relay policy
 * ``meshtastic text send [-c <index>] [dest|broadcast] <message>`` — send on a specific channel
 
-More commands are available when additional features (e.g. environment metrics, GNSS, ...).
+More commands are available when additional features (e.g. environment metrics, GNSS, ...) are
+enabled, e.g.:
+
+* ``meshtastic nodedb list`` — list NodeDB entries
+* ``meshtastic nodedb show <node|0xnode>`` — show one NodeDB entry
+* ``meshtastic metrics send [-c <index>] [dest|broadcast]`` — send device metrics
+* ``meshtastic environment send [-c <index>] [dest|broadcast]`` — send environment telemetry
+* ``meshtastic nodeinfo send [-c <index>] [dest|broadcast]`` — send node information
+* ``meshtastic gnss send [-c <index>] [dest|broadcast]`` — send GNSS position
 
 Sample Output
 *************
