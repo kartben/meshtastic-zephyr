@@ -1,0 +1,11 @@
+common:
+  tags:
+    - meshtastic
+    - protocol
+    - native_sim
+  integration_platforms:
+    - native_sim/native/64
+  platform_allow:
+    - native_sim/native/64
+tests:
+  meshtastic.protocol.native_sim: {}

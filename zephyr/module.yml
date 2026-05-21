@@ -4,5 +4,5 @@ build:
   kconfig: Kconfig
 samples:
   - samples
-# tests:
-#   - tests
+tests:
+  - tests
