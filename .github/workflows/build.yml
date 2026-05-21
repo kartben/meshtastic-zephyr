@@ -70,7 +70,8 @@ jobs:
             gcovr -r . -v --merge-mode-functions=separate \
               --gcov-object-directory twister-out \
               "${TRACE_ARGS[@]}" \
-              --markdown coverage-report.md
+              --markdown coverage-report.md \
+              --html coverage-html/ --html-details
           else
             printf '%s\n\n%s\n' '## Protocol test coverage' \
               '_Coverage data not available._' > coverage-report.md
@@ -83,6 +84,20 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
           cat coverage-report.md >> "${GITHUB_STEP_SUMMARY}"
+          if [ -d coverage-html ]; then
+            {
+              echo ''
+              echo 'A detailed HTML coverage report is available in the **protocol-coverage-html** workflow artifact.'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload coverage HTML report
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-coverage-html
+          path: meshtastic-zephyr/coverage-html/
+          if-no-files-found: ignore
 
       - name: Build sample
         working-directory: meshtastic-zephyr
