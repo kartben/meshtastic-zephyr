@@ -15,6 +15,7 @@
 
 #include "meshtastic_modules.h"
 #include "meshtastic_telemetry_internal.h"
+#include "meshtastic_airtime.h"
 
 #include <zephyr/meshtastic/telemetry.h>
 
@@ -72,6 +73,13 @@ int meshtastic_collect_device_metrics(meshtastic_DeviceMetrics *metrics)
 	metrics->uptime_seconds = k_uptime_seconds();
 
 	collect_fuel_gauge(metrics);
+
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+	metrics->has_channel_utilization = true;
+	metrics->channel_utilization = meshtastic_airtime_channel_util_percent();
+	metrics->has_air_util_tx = true;
+	metrics->air_util_tx = meshtastic_airtime_tx_util_percent();
+#endif
 
 	return 0;
 }
@@ -258,6 +266,15 @@ static void telemetry_thread_fn(void *p1, void *p2, void *p3)
 
 int meshtastic_metrics_init(void)
 {
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+	int ret;
+
+	ret = meshtastic_airtime_init();
+	if (ret < 0) {
+		return ret;
+	}
+#endif
+
 #if defined(CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE)
 	k_mutex_init(&device_telemetry_state.lock);
 #endif

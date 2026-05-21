@@ -1,0 +1,10 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+config MESHTASTIC_AIRTIME
+	bool "Meshtastic channel and TX airtime accounting"
+	default y
+	depends on MESHTASTIC_DEVICE_METRICS
+	help
+	  Track LoRa time-on-air for TX and RX and expose channel_utilization
+	  and air_util_tx in DeviceMetrics telemetry, matching official firmware.

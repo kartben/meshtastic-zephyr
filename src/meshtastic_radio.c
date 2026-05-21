@@ -18,6 +18,7 @@
 #include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
 #include "meshtastic_router.h"
+#include "meshtastic_airtime.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
@@ -164,6 +165,10 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 		meshtastic_emit_event(MESHTASTIC_EVENT_TX_FAILED, ret, NULL);
 	} else {
 		mt.status.tx_packets++;
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_TX,
+				       meshtastic_airtime_packet_ms(pkt_len));
+#endif
 	}
 
 	return ret;

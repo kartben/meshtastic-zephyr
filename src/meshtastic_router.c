@@ -22,6 +22,10 @@
 #include "meshtastic_phoneapi.h"
 #include "meshtastic_router.h"
 
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+#include "meshtastic_airtime.h"
+#endif
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
@@ -184,6 +188,9 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
 	bool decoded = false;
 	int ret;
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+	uint32_t airtime_ms;
+#endif
 
 	if (buf == NULL || len < (int)MESHTASTIC_HDR_LEN) {
 		LOG_DBG("Packet too short (%d bytes)", len);
@@ -194,6 +201,10 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 	src = sys_le32_to_cpu(hdr->src);
 	pkt_id = sys_le32_to_cpu(hdr->id);
 
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+	airtime_ms = meshtastic_airtime_packet_ms((uint32_t)len);
+#endif
+
 #if defined(CONFIG_MESHTASTIC_PACKET_HEXDUMP)
 	log_wire_rx(buf, len, rssi, snr);
 #endif
@@ -201,11 +212,17 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 	if (IS_ENABLED(CONFIG_MESHTASTIC_MQTT_IGNORE_MQTT) &&
 	    ((hdr->flags & MESHTASTIC_FLAGS_VIA_MQTT) != 0U)) {
 		LOG_DBG("Ignoring packet with via_mqtt set");
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX_ALL, airtime_ms);
+#endif
 		return;
 	}
 
 	if (dup_check(src, pkt_id)) {
 		LOG_DBG("Duplicate (src=0x%08x id=0x%08x)", src, pkt_id);
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX_ALL, airtime_ms);
+#endif
 		return;
 	}
 
@@ -215,8 +232,19 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 						sizeof(payload), &decoded);
 	if (ret < 0) {
 		LOG_DBG("RX header parse failed (%d)", ret);
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX_ALL, airtime_ms);
+#endif
 		return;
 	}
+
+#if defined(CONFIG_MESHTASTIC_AIRTIME)
+	if (packet.from == 0U) {
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX_ALL, airtime_ms);
+	} else {
+		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX, airtime_ms);
+	}
+#endif
 
 	if (!decoded) {
 		mt.status.decode_failures++;
