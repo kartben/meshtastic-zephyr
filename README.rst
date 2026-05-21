@@ -68,8 +68,8 @@ Optional interfaces
 Shell
 =====
 
-Enable :kconfig:option:`CONFIG_SHELL` and
-:kconfig:option:`CONFIG_MESHTASTIC_SHELL` to test the node from a Zephyr shell.
+Enable ``CONFIG_SHELL`` and ``CONFIG_MESHTASTIC_SHELL`` to test the node from a
+Zephyr shell.
 Useful commands include::
 
   meshtastic status
@@ -84,14 +84,14 @@ appear when their matching options are enabled.
 BLE PhoneAPI
 ============
 
-Enable :kconfig:option:`CONFIG_MESHTASTIC_BLE` to use the node from the
+Enable ``CONFIG_MESHTASTIC_BLE`` to use the node from the
 Meshtastic mobile app. After flashing the board, pair with the advertised
 Zephyr Meshtastic node to inspect settings and send messages through the app.
 
 UART PhoneAPI
 =============
 
-Enable :kconfig:option:`CONFIG_MESHTASTIC_SERIAL` to use Meshtastic host tools
+Enable ``CONFIG_MESHTASTIC_SERIAL`` to use Meshtastic host tools
 over a UART. Select the UART with the ``zephyr,meshtastic-uart`` chosen node
 and use a dedicated UART when possible so console, logging, or shell output do
 not corrupt the PhoneAPI frame stream.
@@ -99,10 +99,10 @@ not corrupt the PhoneAPI frame stream.
 MQTT gateway
 ============
 
-Enable :kconfig:option:`CONFIG_MESHTASTIC_MQTT` on a board with IPv4
+Enable ``CONFIG_MESHTASTIC_MQTT`` on a board with IPv4
 networking to bridge mesh packets to a Meshtastic-compatible MQTT broker. The
 default configuration targets the public broker; set
-:kconfig:option:`CONFIG_MESHTASTIC_MQTT_ROOT` to change the root topic.
+``CONFIG_MESHTASTIC_MQTT_ROOT`` to change the root topic.
 
 See the official `Meshtastic MQTT integration documentation
 <https://meshtastic.org/docs/software/integrations/mqtt/>`_ for broker
