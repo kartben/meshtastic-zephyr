@@ -23,7 +23,6 @@
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
 enum shell_work_op {
-	SHELL_WORK_SEND_PORT,
 	SHELL_WORK_SEND_TEXT,
 	SHELL_WORK_SEND_POSITION,
 	SHELL_WORK_SEND_METRICS,
@@ -96,10 +95,6 @@ static void shell_work_thread_fn(void *p1, void *p2, void *p3)
 		k_msgq_get(&shell_work_msgq, &item, K_FOREVER);
 
 		switch (item.op) {
-		case SHELL_WORK_SEND_PORT:
-			ret = meshtastic_send_data(item.dest, item.portnum, item.payload,
-						   item.payload_len);
-			break;
 		case SHELL_WORK_SEND_TEXT:
 			if (item.channel_index != MESHTASTIC_CHANNEL_INDEX_INVALID) {
 				struct meshtastic_packet packet = {
@@ -1108,45 +1103,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(meshtastic_text_cmds,
 			       SHELL_SUBCMD_SET_END);
 #endif /* CONFIG_MESHTASTIC_MESSAGE */
 
-static int cmd_send_port(const struct shell *sh, size_t argc, char **argv)
-{
-	struct shell_work_item item = {
-		.op = SHELL_WORK_SEND_PORT,
-	};
-	uint32_t dest;
-	uint32_t portnum;
-	size_t len;
-	int ret;
-
-	if (argc < 4) {
-		shell_error(sh, "usage: meshtastic send-port <dest|broadcast> <port> <payload>");
-		return -EINVAL;
-	}
-
-	ret = parse_u32(sh, argv[1], &dest);
-	if (ret < 0) {
-		return ret;
-	}
-
-	ret = parse_u32(sh, argv[2], &portnum);
-	if (ret < 0) {
-		return ret;
-	}
-
-	len = strlen(argv[3]);
-	if (len == 0U || len > MESHTASTIC_MAX_PAYLOAD_LEN) {
-		shell_error(sh, "payload length must be 1..%u", MESHTASTIC_MAX_PAYLOAD_LEN);
-		return -EINVAL;
-	}
-
-	item.dest = dest;
-	item.portnum = portnum;
-	item.payload_len = len;
-	memcpy(item.payload, argv[3], len);
-
-	return enqueue_shell_work(sh, &item);
-}
-
 #if defined(CONFIG_MESHTASTIC_GNSS)
 static int cmd_gnss_send(const struct shell *sh, size_t argc, char **argv)
 {
@@ -1209,10 +1165,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 #if defined(CONFIG_MESHTASTIC_MESSAGE)
 	SHELL_CMD(text, &meshtastic_text_cmds, SHELL_HELP("Text message commands.", NULL), NULL),
 #endif
-	SHELL_CMD(send - port, NULL,
-		  SHELL_HELP("Send payload to arbitrary Meshtastic port.",
-			     "<dest|broadcast> <port> <payload>"),
-		  cmd_send_port),
 #if defined(CONFIG_MESHTASTIC_NODEDB)
 	SHELL_CMD(nodedb, &meshtastic_nodedb_cmds, SHELL_HELP("NodeDB commands.", NULL), NULL),
 #endif
