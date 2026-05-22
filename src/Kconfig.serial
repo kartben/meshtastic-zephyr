@@ -29,7 +29,7 @@ if MESHTASTIC_SERIAL
 
 config MESHTASTIC_SERIAL_FROMRADIO_QUEUE_SIZE
 	int "Serial FromRadio queue depth"
-	default 48
+	default 8
 	range 8 64
 	help
 	  Number of encoded FromRadio frames retained for the serial phone

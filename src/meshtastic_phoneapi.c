@@ -28,10 +28,12 @@ static struct {
 
 static K_MUTEX_DEFINE(phoneapi_lock);
 
-static int encode_fromradio(const meshtastic_FromRadio *from,
-			    struct meshtastic_phoneapi_frame *frame)
+int meshtastic_phoneapi_encode_fromradio_frame(const meshtastic_FromRadio *from,
+					       struct meshtastic_phoneapi_frame *frame)
 {
 	pb_ostream_t stream;
+
+	*frame = (struct meshtastic_phoneapi_frame){0};
 
 	stream = pb_ostream_from_buffer(frame->data, sizeof(frame->data));
 	if (!pb_encode(&stream, meshtastic_FromRadio_fields, from)) {
@@ -41,6 +43,11 @@ static int encode_fromradio(const meshtastic_FromRadio *from,
 
 	frame->len = (uint16_t)stream.bytes_written;
 	return 0;
+}
+
+static bool config_active(const struct meshtastic_phoneapi *api)
+{
+	return api->config_state != MESHTASTIC_PHONEAPI_CONFIG_IDLE;
 }
 
 void meshtastic_phoneapi_init(struct meshtastic_phoneapi *api, const char *name,
@@ -86,6 +93,9 @@ void meshtastic_phoneapi_reset(struct meshtastic_phoneapi *api)
 	api->tail = 0U;
 	api->count = 0U;
 	api->current_valid = false;
+	api->config_state = MESHTASTIC_PHONEAPI_CONFIG_IDLE;
+	api->config_index = 0U;
+	api->config_request_id = 0U;
 	k_mutex_unlock(&api->lock);
 }
 
@@ -94,7 +104,7 @@ uint32_t meshtastic_phoneapi_pending_count(struct meshtastic_phoneapi *api)
 	uint32_t count;
 
 	k_mutex_lock(&api->lock, K_FOREVER);
-	count = api->count + (api->current_valid ? 1U : 0U);
+	count = api->count + (api->current_valid ? 1U : 0U) + (config_active(api) ? 1U : 0U);
 	k_mutex_unlock(&api->lock);
 
 	return count;
@@ -105,6 +115,11 @@ bool meshtastic_phoneapi_pop_frame(struct meshtastic_phoneapi *api,
 {
 	k_mutex_lock(&api->lock, K_FOREVER);
 	if (api->count == 0U) {
+		if (config_active(api) && meshtastic_phoneapi_next_config_frame(api, frame) == 0) {
+			k_mutex_unlock(&api->lock);
+			return true;
+		}
+
 		k_mutex_unlock(&api->lock);
 		return false;
 	}
@@ -143,6 +158,9 @@ bool meshtastic_phoneapi_current_frame(struct meshtastic_phoneapi *api,
 		api->tail = (uint8_t)((api->tail + 1U) % api->queue_size);
 		api->count--;
 		api->current_valid = true;
+	} else if (!api->current_valid && config_active(api) &&
+		   meshtastic_phoneapi_next_config_frame(api, &api->current) == 0) {
+		api->current_valid = true;
 	}
 
 	if (!api->current_valid) {
@@ -157,9 +175,16 @@ bool meshtastic_phoneapi_current_frame(struct meshtastic_phoneapi *api,
 
 void meshtastic_phoneapi_current_frame_complete(struct meshtastic_phoneapi *api)
 {
+	bool more;
+
 	k_mutex_lock(&api->lock, K_FOREVER);
 	api->current_valid = false;
+	more = config_active(api);
 	k_mutex_unlock(&api->lock);
+
+	if (more && api->data_ready != NULL) {
+		api->data_ready(api);
+	}
 }
 
 void meshtastic_phoneapi_current_frame_reset(struct meshtastic_phoneapi *api)
@@ -175,7 +200,7 @@ int meshtastic_phoneapi_enqueue_fromradio(struct meshtastic_phoneapi *api,
 	struct meshtastic_phoneapi_frame frame;
 	int ret;
 
-	ret = encode_fromradio(from, &frame);
+	ret = meshtastic_phoneapi_encode_fromradio_frame(from, &frame);
 	if (ret < 0) {
 		return ret;
 	}

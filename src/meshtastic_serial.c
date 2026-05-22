@@ -153,30 +153,32 @@ static void serial_tx_start(void)
 
 static void serial_tx_finish(void)
 {
+	unsigned int key = irq_lock();
+
 	if (!ring_buf_is_empty(&serial_tx_rb)) {
+		irq_unlock(key);
 		return;
 	}
 
 	uart_irq_tx_disable(serial.dev);
+	irq_unlock(key);
 	k_work_submit_to_queue(&serial.work_q, &serial.tx_cont_work);
 }
 
 static bool serial_tx_queue(const uint8_t *data, size_t len)
 {
-	while (len > 0U) {
-		uint32_t put = ring_buf_put(&serial_tx_rb, data, len);
+	unsigned int key = irq_lock();
+	bool ok = false;
 
-		if (put == 0U) {
-			serial_tx_start();
-			return false;
-		}
-
-		data += put;
-		len -= put;
+	if (ring_buf_space_get(&serial_tx_rb) >= len) {
+		(void)ring_buf_put(&serial_tx_rb, data, len);
+		ok = true;
 	}
 
 	serial_tx_start();
-	return true;
+	irq_unlock(key);
+
+	return ok;
 }
 
 static void tx_work_handler(struct k_work *work)
@@ -391,7 +393,18 @@ static void serial_isr(const struct device *dev, void *user_data)
 	}
 
 	if (uart_irq_tx_ready(dev)) {
-		serial_isr_tx();
+		/*
+		 * Hardware UARTs often have FIFO depth 1: keep draining while
+		 * the driver reports TX ready and the ring buffer is shrinking.
+		 */
+		do {
+			uint32_t pending = ring_buf_size_get(&serial_tx_rb);
+
+			serial_isr_tx();
+			if (ring_buf_size_get(&serial_tx_rb) == pending) {
+				break;
+			}
+		} while (uart_irq_tx_ready(dev));
 	}
 }
 
