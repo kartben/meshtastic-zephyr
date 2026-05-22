@@ -15,22 +15,23 @@
 extern "C" {
 #endif
 
-int meshtastic_outbound_init(void);
-
 /*
- * Queue a wire frame for transmission.  Returns 0 when queued, -ENOMSG if the
- * queue is full.  Does not block on the radio driver.
+ * Queue a wire frame for transmission on the Meshtastic radio worker thread.
+ * Returns 0 when queued, -ENOMSG if the async TX queue is full, and does not
+ * block on the radio driver.
  */
-int meshtastic_radio_send_wire(uint8_t *pkt, uint32_t pkt_len);
+int meshtastic_radio_send_wire(const uint8_t *pkt, uint32_t pkt_len);
 
 /*
- * Queue a wire frame and block until the outbound worker completes the
- * transmission or @p timeout expires (-EAGAIN).
+ * Send a wire frame synchronously, serializing with the radio state lock.
+ * When called from the radio worker thread this transmits inline to avoid
+ * self-deadlock.  Returns -EAGAIN if @p timeout expires before radio access is
+ * acquired.
  */
 int meshtastic_radio_send_wire_wait(const uint8_t *pkt, uint32_t pkt_len, k_timeout_t timeout);
 
-/* Driver-level TX; only called from the outbound worker thread. */
-int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len);
+/* Driver-level TX; used by the radio worker and synchronous send path. */
+int meshtastic_radio_send_wire_now(const uint8_t *pkt, uint32_t pkt_len);
 
 #ifdef __cplusplus
 }

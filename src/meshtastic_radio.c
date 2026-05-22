@@ -3,7 +3,8 @@
  */
 
 /*
- * LoRa radio access, RX handoff, and TX/RX state serialization.
+ * LoRa radio access, RX handoff, async TX queueing, and TX/RX state
+ * serialization.
  */
 
 #include <string.h>
@@ -15,10 +16,10 @@
 #include <zephyr/sys/util.h>
 
 #include "meshtastic_core.h"
-#include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
 #include "meshtastic_router.h"
 #include "meshtastic_airtime.h"
+#include "meshtastic_outbound.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
@@ -59,8 +60,21 @@ struct mt_rx_slot {
 
 K_MSGQ_DEFINE(mt_rx_msgq, sizeof(struct mt_rx_slot), CONFIG_MESHTASTIC_RX_QUEUE_DEPTH, 4);
 
+/* Async TX item handed from callers to the processing thread. */
+struct mt_tx_slot {
+	uint32_t len;
+	uint8_t buf[MESHTASTIC_PKT_MAX];
+};
+
+K_MSGQ_DEFINE(mt_tx_msgq, sizeof(struct mt_tx_slot), CONFIG_MESHTASTIC_OUTBOUND_QUEUE_DEPTH, 4);
+
 static void mt_rx_cb(const struct device *dev, uint8_t *data, uint16_t size, int16_t rssi,
 		     int8_t snr, void *user_data);
+
+static bool mt_thread_is_current(void)
+{
+	return k_current_get() == &mt_thread;
+}
 
 #if defined(CONFIG_MESHTASTIC_PACKET_HEXDUMP)
 static void log_wire_tx(const uint8_t *pkt, uint32_t pkt_len)
@@ -101,17 +115,24 @@ static uint32_t mt_busy_backoff_ms(void)
 	return min_ms + (sys_rand32_get() % (max_ms - min_ms + 1U));
 }
 
-int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
+static int mt_radio_send_locked(const uint8_t *pkt, uint32_t pkt_len, k_timeout_t timeout)
 {
 	int ret;
 	int retries;
 	int busy_retries = 0;
 
+	if (pkt == NULL || pkt_len == 0U || pkt_len > MESHTASTIC_PKT_MAX) {
+		return -EINVAL;
+	}
+
 #if defined(CONFIG_MESHTASTIC_PACKET_HEXDUMP)
 	log_wire_tx(pkt, pkt_len);
 #endif
 
-	(void)k_sem_take(&mt_radio_sem, K_FOREVER);
+	ret = k_sem_take(&mt_radio_sem, timeout);
+	if (ret < 0) {
+		return ret;
+	}
 
 	/*
 	 * Continuous async RX must be stopped first: the SX126x driver
@@ -132,7 +153,7 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 	if (ret == 0) {
 		retries = CONFIG_MESHTASTIC_TX_BUSY_RETRIES;
 		for (;;) {
-			ret = lora_send(mt.lora_dev, pkt, pkt_len);
+			ret = lora_send(mt.lora_dev, (uint8_t *)pkt, pkt_len);
 			if (ret != -EBUSY || retries == 0) {
 				break;
 			}
@@ -174,6 +195,42 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 	return ret;
 }
 
+int meshtastic_radio_send_wire_now(const uint8_t *pkt, uint32_t pkt_len)
+{
+	return mt_radio_send_locked(pkt, pkt_len, K_FOREVER);
+}
+
+static int mt_tx_enqueue(const uint8_t *pkt, uint32_t pkt_len)
+{
+	struct mt_tx_slot slot;
+	int ret;
+
+	if (pkt == NULL || pkt_len == 0U || pkt_len > MESHTASTIC_PKT_MAX) {
+		return -EINVAL;
+	}
+
+	slot.len = pkt_len;
+	memcpy(slot.buf, pkt, pkt_len);
+
+	ret = k_msgq_put(&mt_tx_msgq, &slot, K_NO_WAIT);
+
+	return (ret == 0) ? 0 : -ENOMSG;
+}
+
+int meshtastic_radio_send_wire(const uint8_t *pkt, uint32_t pkt_len)
+{
+	return mt_tx_enqueue(pkt, pkt_len);
+}
+
+int meshtastic_radio_send_wire_wait(const uint8_t *pkt, uint32_t pkt_len, k_timeout_t timeout)
+{
+	if (mt_thread_is_current()) {
+		return meshtastic_radio_send_wire_now(pkt, pkt_len);
+	}
+
+	return mt_radio_send_locked(pkt, pkt_len, timeout);
+}
+
 /*
  * LoRa driver receive callback.  Runs on the driver's system workqueue (not
  * an ISR), and the driver auto-restarts continuous RX as soon as this returns
@@ -203,9 +260,43 @@ static void mt_rx_cb(const struct device *dev, uint8_t *data, uint16_t size, int
 	}
 }
 
-static void mt_thread_fn(void *p1, void *p2, void *p3)
+static void mt_process_rx_queue(void)
 {
 	struct mt_rx_slot slot;
+
+	while (k_msgq_get(&mt_rx_msgq, &slot, K_NO_WAIT) == 0) {
+		meshtastic_router_process_lora_rx(slot.buf, slot.len, slot.rssi, slot.snr);
+	}
+}
+
+static void mt_process_tx_queue(void)
+{
+	struct mt_tx_slot slot;
+
+	while (k_msgq_get(&mt_tx_msgq, &slot, K_NO_WAIT) == 0) {
+		(void)meshtastic_radio_send_wire_now(slot.buf, slot.len);
+	}
+}
+
+static void mt_rearm_rx_if_needed(void)
+{
+	if (!mt.radio_rx_armed) {
+		(void)k_sem_take(&mt_radio_sem, K_FOREVER);
+		if (!mt.radio_rx_armed) {
+			(void)mt_radio_arm_rx();
+		}
+		(void)k_sem_give(&mt_radio_sem);
+	}
+}
+
+static void mt_thread_fn(void *p1, void *p2, void *p3)
+{
+	struct k_poll_event events[] = {
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE,
+						K_POLL_MODE_NOTIFY_ONLY, &mt_rx_msgq, 0),
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE,
+						K_POLL_MODE_NOTIFY_ONLY, &mt_tx_msgq, 0),
+	};
 	int ret;
 
 	ARG_UNUSED(p1);
@@ -213,9 +304,21 @@ static void mt_thread_fn(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	while (true) {
-		ret = k_msgq_get(&mt_rx_msgq, &slot, K_MSEC(CONFIG_MESHTASTIC_RX_REARM_RETRY_MS));
+		ret = k_poll(events, ARRAY_SIZE(events),
+			     K_MSEC(CONFIG_MESHTASTIC_RX_REARM_RETRY_MS));
 		if (ret == 0) {
-			meshtastic_router_process_lora_rx(slot.buf, slot.len, slot.rssi, slot.snr);
+			if (events[0].state == K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
+				events[0].state = K_POLL_STATE_NOT_READY;
+				mt_process_rx_queue();
+			}
+			if (events[1].state == K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
+				events[1].state = K_POLL_STATE_NOT_READY;
+				mt_process_tx_queue();
+			}
+			continue;
+		}
+
+		if (ret != -EAGAIN) {
 			continue;
 		}
 
@@ -223,13 +326,7 @@ static void mt_thread_fn(void *p1, void *p2, void *p3)
 		 * No packet within the retry window.  If a TX left async RX
 		 * un-armed (re-arm failed), the radio is deaf - recover it.
 		 */
-		if (!mt.radio_rx_armed) {
-			(void)k_sem_take(&mt_radio_sem, K_FOREVER);
-			if (!mt.radio_rx_armed) {
-				(void)mt_radio_arm_rx();
-			}
-			(void)k_sem_give(&mt_radio_sem);
-		}
+		mt_rearm_rx_if_needed();
 	}
 }
 
@@ -245,11 +342,6 @@ int meshtastic_radio_init(void)
 	if (ret < 0) {
 		LOG_ERR("Initial lora_config failed (%d)", ret);
 		return -EIO;
-	}
-
-	ret = meshtastic_outbound_init();
-	if (ret < 0) {
-		return ret;
 	}
 
 	k_thread_create(&mt_thread, mt_stack, K_THREAD_STACK_SIZEOF(mt_stack), mt_thread_fn, NULL,

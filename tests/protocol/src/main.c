@@ -140,6 +140,8 @@ struct test_state {
 	struct meshtastic_event last_event;
 	uint32_t recv_count;
 	uint32_t event_count;
+	const char *reply_text;
+	int reply_ret;
 };
 
 static struct test_state state;
@@ -155,6 +157,8 @@ static void reset_callbacks_state(void)
 	state.last_event_payload_len = 0U;
 	state.recv_count = 0U;
 	state.event_count = 0U;
+	state.reply_text = NULL;
+	state.reply_ret = 0;
 	k_sem_reset(&state.rx_sem);
 	k_sem_reset(&state.tx_sem);
 }
@@ -195,6 +199,11 @@ static void on_recv(uint32_t from, uint32_t to, uint32_t portnum, const uint8_t 
 		memcpy(state.last_rx_payload, payload, payload_len);
 	}
 	state.recv_count++;
+
+	if (state.reply_text != NULL) {
+		state.reply_ret = meshtastic_send_text(from, state.reply_text);
+	}
+
 	k_sem_give(&state.rx_sem);
 }
 
@@ -548,6 +557,30 @@ ZTEST(protocol_stack, test_radio_send_failure_emits_failed_event)
 	zassert_equal(after.tx_failures, before.tx_failures + 1U,
 		      "tx failure counter not incremented");
 	zassert_equal(after.tx_packets, before.tx_packets, "failed TX should not count as sent");
+}
+
+/* Verifies RX callbacks can issue blocking sends without deadlocking the radio worker. */
+ZTEST(protocol_stack, test_recv_callback_can_send_blocking_reply)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	struct meshtastic_packet decoded;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+
+	build_peer_wire_packet(TEST_NODE_ID, 0x5102U, 3U, "ping", wire, &wire_len);
+	state.reply_text = "pong";
+
+	inject_rx_frame(wire, wire_len, -45, 6);
+
+	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for RX callback");
+	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for reply TX");
+	zassert_ok(state.reply_ret, "reply send failed: %d", state.reply_ret);
+
+	decode_last_tx(&decoded, payload, sizeof(payload));
+	zassert_equal(decoded.from, TEST_NODE_ID, "unexpected reply source");
+	zassert_equal(decoded.to, PEER_NODE_ID, "unexpected reply destination");
+	zassert_equal(decoded.portnum, MESHTASTIC_PORT_TEXT_MESSAGE, "unexpected reply port");
+	assert_payload(decoded.payload, decoded.payload_len, "pong", 4U);
 }
 
 /* Verifies decoded MeshPacket conversion preserves application payload and packet metadata. */
