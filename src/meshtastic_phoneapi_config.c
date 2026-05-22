@@ -255,14 +255,20 @@ void meshtastic_phoneapi_enqueue_phone_config(struct meshtastic_phoneapi *api, u
 	LOG_INF("%s want_config nonce=%u", api->name, request_id);
 
 	k_mutex_lock(&api->lock, K_FOREVER);
+	api->head = 0U;
+	api->tail = 0U;
+	api->count = 0U;
+	api->current_valid = false;
 	api->config_state = MESHTASTIC_PHONEAPI_CONFIG_MY_INFO;
 	api->config_index = 0U;
 	api->config_request_id = request_id;
 	k_mutex_unlock(&api->lock);
 
-	if (api->data_ready != NULL) {
-		api->data_ready(api);
+	if (api->invalidate_delivery != NULL) {
+		api->invalidate_delivery(api);
 	}
+
+	meshtastic_phoneapi_notify_data_ready(api);
 }
 
 int meshtastic_phoneapi_set_channel(uint8_t index, const meshtastic_Channel *channel)

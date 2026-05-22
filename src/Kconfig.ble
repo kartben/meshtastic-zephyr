@@ -64,10 +64,11 @@ config MESHTASTIC_BLE_FROMRADIO_QUEUE_SIZE
 
 config MESHTASTIC_BLE_WORK_STACK_SIZE
 	int "Bluetooth PhoneAPI work thread stack size"
-	default 4096
+	default 6144
 	help
-	  Stack size for deferred ToRadio protobuf decoding and command
-	  handling.
+	  Stack size for deferred ToRadio/FromRadio protobuf handling. Config
+	  sync builds large FromRadio messages and must not run on the small
+	  Bluetooth host workqueue stack.
 
 config MESHTASTIC_BLE_WORK_PRIORITY
 	int "Bluetooth PhoneAPI work thread priority"
