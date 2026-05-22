@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 manifest:
-  self:
-    path: .
-
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
