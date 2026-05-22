@@ -53,11 +53,15 @@ static struct {
 	uint16_t to_radio_len;
 	struct k_work_q work_q;
 	struct k_work to_radio_work;
+	struct k_work fromradio_work;
 } ble;
 
 static K_THREAD_STACK_DEFINE(ble_work_stack, CONFIG_MESHTASTIC_BLE_WORK_STACK_SIZE);
 
-static K_SEM_DEFINE(fromradio_sem, 0, 1);
+static struct meshtastic_phoneapi_frame fromradio_staged;
+static uint8_t fromradio_buf[MESHTASTIC_API_FRAME_MAX];
+static uint16_t fromradio_len;
+static bool fromradio_ready;
 
 #if defined(CONFIG_MESHTASTIC_BLE_FIXED_PASSKEY)
 /*
@@ -90,13 +94,43 @@ enum {
 };
 
 static void notify_fromnum(void);
-static void fromradio_data_ready(void);
+static void schedule_fromradio_prepare(void);
+
+static void ble_invalidate_delivery(struct meshtastic_phoneapi *api)
+{
+	ARG_UNUSED(api);
+
+	fromradio_ready = false;
+	fromradio_len = 0U;
+	meshtastic_phoneapi_current_frame_reset(&ble.api);
+}
 
 static void ble_data_ready(struct meshtastic_phoneapi *api)
 {
 	ARG_UNUSED(api);
 
-	fromradio_data_ready();
+	schedule_fromradio_prepare();
+}
+
+static void fromradio_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	if (fromradio_ready) {
+		return;
+	}
+
+	if (!meshtastic_phoneapi_current_frame(&ble.api, &fromradio_staged)) {
+		return;
+	}
+
+	k_mutex_lock(&ble.api.lock, K_FOREVER);
+	ble.api.from_num++;
+	k_mutex_unlock(&ble.api.lock);
+
+	fromradio_ready = true;
+	LOG_DBG("BLE FromRadio staged len=%u from_num=%u", fromradio_staged.len,
+		meshtastic_phoneapi_from_num(&ble.api));
 	notify_fromnum();
 }
 
@@ -109,9 +143,9 @@ static void ble_disconnect(struct meshtastic_phoneapi *api)
 	}
 }
 
-static void fromradio_data_ready(void)
+static void schedule_fromradio_prepare(void)
 {
-	k_sem_give(&fromradio_sem);
+	(void)k_work_submit_to_queue(&ble.work_q, &ble.fromradio_work);
 }
 
 static void notify_fromnum(void)
@@ -125,7 +159,7 @@ static void notify_fromnum(void)
 		return;
 	}
 	conn = bt_conn_ref(ble.conn);
-	sys_put_le32(meshtastic_phoneapi_pending_count(&ble.api), value);
+	sys_put_le32(meshtastic_phoneapi_from_num(&ble.api), value);
 	k_mutex_unlock(&ble.lock);
 
 	(void)bt_gatt_notify(conn, &attr_meshtastic_svc[MESHTASTIC_ATTR_FROMNUM_VALUE], value,
@@ -141,41 +175,35 @@ static ssize_t read_fromnum(struct bt_conn *conn, const struct bt_gatt_attr *att
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
 
-	sys_put_le32(meshtastic_phoneapi_pending_count(&ble.api), value);
+	sys_put_le32(meshtastic_phoneapi_from_num(&ble.api), value);
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, value, sizeof(value));
 }
 
 static ssize_t read_fromradio(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
 			      uint16_t len, uint16_t offset)
 {
-	struct meshtastic_phoneapi_frame frame;
 	ssize_t ret;
-	int tries = 0;
 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
 
-	while (true) {
-		if (meshtastic_phoneapi_current_frame(&ble.api, &frame)) {
-			ret = bt_gatt_attr_read(conn, attr, buf, len, offset, frame.data,
-						frame.len);
-			if (ret >= 0 && offset + ret >= frame.len) {
-				meshtastic_phoneapi_current_frame_complete(&ble.api);
-			}
-			notify_fromnum();
-			return ret;
+	if (offset == 0U) {
+		if (fromradio_ready) {
+			memcpy(fromradio_buf, fromradio_staged.data, fromradio_staged.len);
+			fromradio_len = fromradio_staged.len;
+		} else {
+			fromradio_len = 0U;
 		}
-
-		if (tries >= 4000) {
-			LOG_WRN("FromRadio read timed out waiting for data");
-			return 0;
-		}
-
-		if (k_sem_take(&fromradio_sem, K_MSEC(tries < 20 ? 1 : 5)) != 0 && tries > 0) {
-			/* Keep polling until timeout above. */
-		}
-		tries++;
 	}
+
+	ret = bt_gatt_attr_read(conn, attr, buf, len, offset, fromradio_buf, fromradio_len);
+	if (ret >= 0 && fromradio_len > 0U && offset + ret >= fromradio_len) {
+		meshtastic_phoneapi_release_current_frame(&ble.api);
+		fromradio_ready = false;
+		schedule_fromradio_prepare();
+	}
+
+	return ret;
 }
 
 static ssize_t read_logradio(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
@@ -294,9 +322,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		k_mutex_unlock(&ble.lock);
 	}
 
-	meshtastic_phoneapi_current_frame_reset(&ble.api);
-
-	fromradio_data_ready();
+	ble_invalidate_delivery(&ble.api);
+	meshtastic_phoneapi_reset(&ble.api);
+	(void)k_work_cancel(&ble.fromradio_work);
 
 	meshtastic_set_ble_connected(false);
 	meshtastic_emit_event(MESHTASTIC_EVENT_BLE_DISCONNECTED, 0, NULL);
@@ -459,12 +487,13 @@ int meshtastic_ble_init(void)
 
 	k_mutex_init(&ble.lock);
 	meshtastic_phoneapi_init(&ble.api, "ble", ble.queue, ARRAY_SIZE(ble.queue), ble_data_ready,
-				 ble_disconnect, NULL);
+				 ble_disconnect, ble_invalidate_delivery, NULL);
 	meshtastic_phoneapi_register(&ble.api);
 
 	k_work_queue_start(&ble.work_q, ble_work_stack, K_THREAD_STACK_SIZEOF(ble_work_stack),
 			   CONFIG_MESHTASTIC_BLE_WORK_PRIORITY, NULL);
 	k_work_init(&ble.to_radio_work, to_radio_work_handler);
+	k_work_init(&ble.fromradio_work, fromradio_work_handler);
 
 	if (!bt_is_ready()) {
 		ret = bt_enable(NULL);

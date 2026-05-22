@@ -24,6 +24,7 @@ struct meshtastic_phoneapi_frame {
 
 typedef void (*meshtastic_phoneapi_data_ready_cb_t)(struct meshtastic_phoneapi *api);
 typedef void (*meshtastic_phoneapi_disconnect_cb_t)(struct meshtastic_phoneapi *api);
+typedef void (*meshtastic_phoneapi_invalidate_cb_t)(struct meshtastic_phoneapi *api);
 
 enum meshtastic_phoneapi_config_state {
 	MESHTASTIC_PHONEAPI_CONFIG_IDLE,
@@ -48,11 +49,13 @@ struct meshtastic_phoneapi {
 	uint8_t tail;
 	uint8_t count;
 	bool current_valid;
+	uint32_t from_num;
 	enum meshtastic_phoneapi_config_state config_state;
 	uint8_t config_index;
 	uint32_t config_request_id;
 	meshtastic_phoneapi_data_ready_cb_t data_ready;
 	meshtastic_phoneapi_disconnect_cb_t disconnect;
+	meshtastic_phoneapi_invalidate_cb_t invalidate_delivery;
 	void *user_data;
 };
 
@@ -60,9 +63,13 @@ struct meshtastic_phoneapi {
 void meshtastic_phoneapi_init(struct meshtastic_phoneapi *api, const char *name,
 			      struct meshtastic_phoneapi_frame *queue, uint8_t queue_size,
 			      meshtastic_phoneapi_data_ready_cb_t data_ready,
-			      meshtastic_phoneapi_disconnect_cb_t disconnect, void *user_data);
+			      meshtastic_phoneapi_disconnect_cb_t disconnect,
+			      meshtastic_phoneapi_invalidate_cb_t invalidate_delivery, void *user_data);
+void meshtastic_phoneapi_release_current_frame(struct meshtastic_phoneapi *api);
 void meshtastic_phoneapi_register(struct meshtastic_phoneapi *api);
 void meshtastic_phoneapi_reset(struct meshtastic_phoneapi *api);
+void meshtastic_phoneapi_notify_data_ready(struct meshtastic_phoneapi *api);
+uint32_t meshtastic_phoneapi_from_num(struct meshtastic_phoneapi *api);
 uint32_t meshtastic_phoneapi_pending_count(struct meshtastic_phoneapi *api);
 bool meshtastic_phoneapi_pop_frame(struct meshtastic_phoneapi *api,
 				   struct meshtastic_phoneapi_frame *frame);

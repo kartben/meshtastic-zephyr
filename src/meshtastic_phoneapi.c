@@ -50,10 +50,18 @@ static bool config_active(const struct meshtastic_phoneapi *api)
 	return api->config_state != MESHTASTIC_PHONEAPI_CONFIG_IDLE;
 }
 
+void meshtastic_phoneapi_notify_data_ready(struct meshtastic_phoneapi *api)
+{
+	if (api->data_ready != NULL) {
+		api->data_ready(api);
+	}
+}
+
 void meshtastic_phoneapi_init(struct meshtastic_phoneapi *api, const char *name,
 			      struct meshtastic_phoneapi_frame *queue, uint8_t queue_size,
 			      meshtastic_phoneapi_data_ready_cb_t data_ready,
-			      meshtastic_phoneapi_disconnect_cb_t disconnect, void *user_data)
+			      meshtastic_phoneapi_disconnect_cb_t disconnect,
+			      meshtastic_phoneapi_invalidate_cb_t invalidate_delivery, void *user_data)
 {
 	*api = (struct meshtastic_phoneapi){
 		.name = name,
@@ -61,6 +69,7 @@ void meshtastic_phoneapi_init(struct meshtastic_phoneapi *api, const char *name,
 		.queue_size = queue_size,
 		.data_ready = data_ready,
 		.disconnect = disconnect,
+		.invalidate_delivery = invalidate_delivery,
 		.user_data = user_data,
 	};
 	k_mutex_init(&api->lock);
@@ -96,7 +105,19 @@ void meshtastic_phoneapi_reset(struct meshtastic_phoneapi *api)
 	api->config_state = MESHTASTIC_PHONEAPI_CONFIG_IDLE;
 	api->config_index = 0U;
 	api->config_request_id = 0U;
+	api->from_num = 0U;
 	k_mutex_unlock(&api->lock);
+}
+
+uint32_t meshtastic_phoneapi_from_num(struct meshtastic_phoneapi *api)
+{
+	uint32_t num;
+
+	k_mutex_lock(&api->lock, K_FOREVER);
+	num = api->from_num;
+	k_mutex_unlock(&api->lock);
+
+	return num;
 }
 
 uint32_t meshtastic_phoneapi_pending_count(struct meshtastic_phoneapi *api)
@@ -173,18 +194,16 @@ bool meshtastic_phoneapi_current_frame(struct meshtastic_phoneapi *api,
 	return true;
 }
 
-void meshtastic_phoneapi_current_frame_complete(struct meshtastic_phoneapi *api)
+void meshtastic_phoneapi_release_current_frame(struct meshtastic_phoneapi *api)
 {
-	bool more;
-
 	k_mutex_lock(&api->lock, K_FOREVER);
 	api->current_valid = false;
-	more = config_active(api);
 	k_mutex_unlock(&api->lock);
+}
 
-	if (more && api->data_ready != NULL) {
-		api->data_ready(api);
-	}
+void meshtastic_phoneapi_current_frame_complete(struct meshtastic_phoneapi *api)
+{
+	meshtastic_phoneapi_release_current_frame(api);
 }
 
 void meshtastic_phoneapi_current_frame_reset(struct meshtastic_phoneapi *api)
@@ -219,9 +238,7 @@ int meshtastic_phoneapi_enqueue_fromradio(struct meshtastic_phoneapi *api,
 		(unsigned int)from->which_payload_variant, frame.len, api->count, api->queue_size);
 	k_mutex_unlock(&api->lock);
 
-	if (api->data_ready != NULL) {
-		api->data_ready(api);
-	}
+	meshtastic_phoneapi_notify_data_ready(api);
 
 	return 0;
 }

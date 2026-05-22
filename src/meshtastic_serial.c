@@ -444,7 +444,7 @@ int meshtastic_serial_init(void)
 	}
 
 	meshtastic_phoneapi_init(&serial.api, "serial", serial.queue, ARRAY_SIZE(serial.queue),
-				 serial_data_ready, serial_disconnect, NULL);
+				 serial_data_ready, serial_disconnect, NULL, NULL);
 	meshtastic_phoneapi_register(&serial.api);
 
 	k_work_queue_start(&serial.work_q, serial_work_stack,
