@@ -25,6 +25,19 @@ struct meshtastic_phoneapi_frame {
 typedef void (*meshtastic_phoneapi_data_ready_cb_t)(struct meshtastic_phoneapi *api);
 typedef void (*meshtastic_phoneapi_disconnect_cb_t)(struct meshtastic_phoneapi *api);
 
+enum meshtastic_phoneapi_config_state {
+	MESHTASTIC_PHONEAPI_CONFIG_IDLE,
+	MESHTASTIC_PHONEAPI_CONFIG_MY_INFO,
+	MESHTASTIC_PHONEAPI_CONFIG_DEVICE_UI,
+	MESHTASTIC_PHONEAPI_CONFIG_NODE_INFO,
+	MESHTASTIC_PHONEAPI_CONFIG_METADATA,
+	MESHTASTIC_PHONEAPI_CONFIG_CHANNELS,
+	MESHTASTIC_PHONEAPI_CONFIG_CONFIGS,
+	MESHTASTIC_PHONEAPI_CONFIG_MODULES,
+	MESHTASTIC_PHONEAPI_CONFIG_QUEUE_STATUS,
+	MESHTASTIC_PHONEAPI_CONFIG_COMPLETE,
+};
+
 struct meshtastic_phoneapi {
 	const char *name;
 	struct k_mutex lock;
@@ -35,6 +48,9 @@ struct meshtastic_phoneapi {
 	uint8_t tail;
 	uint8_t count;
 	bool current_valid;
+	enum meshtastic_phoneapi_config_state config_state;
+	uint8_t config_index;
+	uint32_t config_request_id;
 	meshtastic_phoneapi_data_ready_cb_t data_ready;
 	meshtastic_phoneapi_disconnect_cb_t disconnect;
 	void *user_data;
@@ -56,6 +72,10 @@ bool meshtastic_phoneapi_current_frame(struct meshtastic_phoneapi *api,
 				       struct meshtastic_phoneapi_frame *frame);
 void meshtastic_phoneapi_current_frame_complete(struct meshtastic_phoneapi *api);
 void meshtastic_phoneapi_current_frame_reset(struct meshtastic_phoneapi *api);
+int meshtastic_phoneapi_encode_fromradio_frame(const meshtastic_FromRadio *from,
+					       struct meshtastic_phoneapi_frame *frame);
+int meshtastic_phoneapi_next_config_frame(struct meshtastic_phoneapi *api,
+					  struct meshtastic_phoneapi_frame *frame);
 int meshtastic_phoneapi_enqueue_fromradio(struct meshtastic_phoneapi *api,
 					  const meshtastic_FromRadio *from);
 void meshtastic_phoneapi_enqueue_my_info(struct meshtastic_phoneapi *api, uint32_t request_id);

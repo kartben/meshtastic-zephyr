@@ -57,7 +57,7 @@ config MESHTASTIC_BLE_DEVICE_NAME
 
 config MESHTASTIC_BLE_FROMRADIO_QUEUE_SIZE
 	int "FromRadio queue depth"
-	default 48
+	default 8
 	range 8 64
 	help
 	  Number of encoded FromRadio frames retained for Bluetooth clients.
