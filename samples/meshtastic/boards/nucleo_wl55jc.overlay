@@ -1,0 +1,5 @@
+/ {
+	chosen {
+		zephyr,meshtastic-uart = &lpuart1;
+	};
+};
