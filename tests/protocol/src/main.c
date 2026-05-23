@@ -401,6 +401,27 @@ static void inject_rx_frame(const uint8_t *wire, uint32_t wire_len, int16_t rssi
 	cb(lora_dev, frame, wire_len, rssi, snr, user_data);
 }
 
+static void build_smp_request_wire_packet(uint32_t from, uint32_t to, uint32_t id, const uint8_t *payload,
+					  size_t payload_len, uint8_t *wire, uint32_t *wire_len)
+{
+	struct meshtastic_packet packet = {
+		.from = from,
+		.to = to,
+		.id = id,
+		.portnum = CONFIG_MESHTASTIC_SMP_PORTNUM,
+		.payload = payload,
+		.payload_len = payload_len,
+		.hop_limit = 3U,
+		.hop_start = 3U,
+		.channel_index = meshtastic_channels_primary_index(),
+		.want_response = true,
+	};
+	int ret;
+
+	ret = meshtastic_build_wire_packet(&packet, wire, wire_len);
+	zassert_ok(ret, "meshtastic_build_wire_packet failed: %d", ret);
+}
+
 ZTEST_SUITE(protocol_stack, NULL, protocol_suite_setup, protocol_before, NULL, NULL);
 
 /* Verifies local text sends produce one LoRa frame, a TX_DONE event, and a decodable payload. */
@@ -697,6 +718,35 @@ ZTEST(protocol_stack, test_mock_radio_receive_delivers_packet)
 	ret = meshtastic_get_status(&after);
 	zassert_ok(ret, "status read failed: %d", ret);
 	zassert_equal(after.rx_packets, before.rx_packets + 1U, "rx counter not incremented");
+}
+
+/* Verifies Meshtastic SMP requests receive a raw SMP response on the same app port. */
+ZTEST(protocol_stack, test_smp_echo_request_receives_reply)
+{
+	static const uint8_t smp_req[] = {
+		0x02, 0x00, 0x00, 0x06, 0x00, 0x00, 0x22, 0x00, 0xa1, 0x61, 0x64, 0x62, 0x68, 0x69,
+	};
+	static const uint8_t smp_rsp[] = {
+		0x03, 0x00, 0x00, 0x06, 0x00, 0x00, 0x22, 0x00, 0xa1, 0x61, 0x72, 0x62, 0x68, 0x69,
+	};
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	struct meshtastic_packet decoded;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+
+	build_smp_request_wire_packet(PEER_NODE_ID, TEST_NODE_ID, 0x6001U, smp_req, sizeof(smp_req),
+				      wire, &wire_len);
+	inject_rx_frame(wire, wire_len, -40, 3);
+
+	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)),
+		   "timed out waiting for SMP reply transmission");
+
+	decode_last_tx(&decoded, payload, sizeof(payload));
+	zassert_equal(decoded.to, PEER_NODE_ID, "unexpected reply destination");
+	zassert_equal(decoded.portnum, CONFIG_MESHTASTIC_SMP_PORTNUM, "unexpected reply port");
+	zassert_equal(decoded.request_id, 0x6001U, "unexpected reply request id");
+	zassert_false(decoded.want_response, "reply should not request another response");
+	assert_payload(decoded.payload, decoded.payload_len, smp_rsp, sizeof(smp_rsp));
 }
 
 /* Verifies too-short LoRa frames are ignored before duplicate, decode, or delivery handling. */

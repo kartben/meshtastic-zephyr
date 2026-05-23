@@ -34,6 +34,16 @@ ID instead, enable custom source and set the default:
 The sample can also be built for the LoRa radio emulator on ``native_sim``
 by adding the appropriate overlay.
 
+To enable Zephyr MCUmgr over a dedicated Meshtastic application port, build
+with the SMP overlay:
+
+.. code-block:: console
+
+   west build -b <your_board> samples/meshtastic -- -DEXTRA_CONF_FILE=overlay-smp.conf
+
+This enables a raw SMP request/response transport on Meshtastic port 256
+(``CONFIG_MESHTASTIC_SMP_PORTNUM``).
+
 Shell commands (TBC)
 ********************
 

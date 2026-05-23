@@ -1,0 +1,27 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_SMP
+	bool "Meshtastic MCUmgr SMP transport"
+	depends on MCUMGR
+	help
+	  Expose Zephyr's MCUmgr Simple Management Protocol over a dedicated
+	  Meshtastic application port. Requests are carried as raw SMP packets in
+	  Meshtastic payloads and answered with a matching raw SMP response.
+
+	  This transport is best suited to small request/response commands such as
+	  OS echo or basic info retrieval. Meshtastic payload size limits mean
+	  large responses and image management uploads are not supported.
+
+if MESHTASTIC_SMP
+
+config MESHTASTIC_SMP_PORTNUM
+	int "Meshtastic application port used for SMP"
+	default 256
+	range 64 511
+	help
+	  Meshtastic application port number used to carry raw SMP request and
+	  response payloads. Use a registered 3rd-party application port or one
+	  of the private application ports (256-511).
+
+endif # MESHTASTIC_SMP

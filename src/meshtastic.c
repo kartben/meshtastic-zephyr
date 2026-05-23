@@ -39,6 +39,9 @@ int meshtastic_ble_init(void);
 #if defined(CONFIG_MESHTASTIC_SERIAL)
 int meshtastic_serial_init(void);
 #endif
+#if defined(CONFIG_MESHTASTIC_SMP)
+int meshtastic_smp_init(void);
+#endif
 #if defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
 int meshtastic_metrics_init(void);
 #endif
@@ -371,6 +374,13 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 
 #if defined(CONFIG_MESHTASTIC_SERIAL)
 	ret = meshtastic_serial_init();
+	if (ret < 0) {
+		return ret;
+	}
+#endif
+
+#if defined(CONFIG_MESHTASTIC_SMP)
+	ret = meshtastic_smp_init();
 	if (ret < 0) {
 		return ret;
 	}

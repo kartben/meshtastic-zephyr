@@ -77,6 +77,9 @@ Legend: ✅ Full · 🟡 Partial · ❌ Not yet
    * - Serial / UART transport
      - ✅
      - StreamAPI framing over a chosen UART (test on Android, macOS, and web client)
+   * - MCUmgr SMP over Meshtastic app
+     - 🟡
+     - Raw request/response transport for small management commands; no large-payload fragmentation
    * - Settings edit over phoneAPI
      - ❌
      - Read/handshake only — use the shell to configure

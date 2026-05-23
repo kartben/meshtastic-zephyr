@@ -30,3 +30,14 @@ tests:
     extra_args:
       - platform:arduino_giga_r1/stm32h747xx/m7:SHIELD=semtech_sx1262mb2das
       - EXTRA_CONF_FILE=overlay-settings.conf
+  sample.meshtastic.smp:
+    tags:
+      - lora
+      - meshtastic
+      - mcumgr
+    platform_allow:
+      - twatch_s3/esp32s3/procpu
+      - arduino_giga_r1/stm32h747xx/m7
+    extra_args:
+      - platform:arduino_giga_r1/stm32h747xx/m7:SHIELD=semtech_sx1262mb2das
+      - EXTRA_CONF_FILE=overlay-smp.conf
