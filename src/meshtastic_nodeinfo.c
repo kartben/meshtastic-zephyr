@@ -258,35 +258,34 @@ MESHTASTIC_MODULE_DEFINE(nodeinfo, MESHTASTIC_PORT_NODEINFO, MESHTASTIC_MODULE_A
 			 meshtastic_module_nodeinfo_alloc_reply);
 
 #if defined(CONFIG_MESHTASTIC_NODEINFO_AUTO_SEND)
-static K_THREAD_STACK_DEFINE(nodeinfo_stack, 2048);
-static struct k_thread nodeinfo_thread;
-
-static void nodeinfo_thread_fn(void *p1, void *p2, void *p3)
+static void nodeinfo_work_handler(struct k_work *work)
 {
-	ARG_UNUSED(p1);
-	ARG_UNUSED(p2);
-	ARG_UNUSED(p3);
+	ARG_UNUSED(work);
 
-	/*
-	 * Delay the first announcement so the radio/network has time to
-	 * settle, mirroring the upstream NodeInfoModule start delay.
-	 */
-	k_sleep(K_SECONDS(CONFIG_MESHTASTIC_NODEINFO_START_DELAY_SEC));
-
-	while (true) {
-		(void)meshtastic_send_node_info(MESHTASTIC_NODE_BROADCAST);
-		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_NODEINFO_INTERVAL_SEC));
-	}
+	(void)meshtastic_send_node_info(MESHTASTIC_NODE_BROADCAST);
 }
+
+static K_WORK_DEFINE(nodeinfo_work, nodeinfo_work_handler);
+
+static void nodeinfo_timer_fn(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+
+	(void)k_work_submit(&nodeinfo_work);
+}
+
+K_TIMER_DEFINE(nodeinfo_timer, nodeinfo_timer_fn, NULL);
 #endif
 
 int meshtastic_nodeinfo_init(void)
 {
 #if defined(CONFIG_MESHTASTIC_NODEINFO_AUTO_SEND)
-	k_thread_create(&nodeinfo_thread, nodeinfo_stack, K_THREAD_STACK_SIZEOF(nodeinfo_stack),
-			nodeinfo_thread_fn, NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0,
-			K_NO_WAIT);
-	k_thread_name_set(&nodeinfo_thread, "meshtastic_nodeinfo");
+	/*
+	 * Delay the first announcement so the radio/network has time to
+	 * settle, mirroring the upstream NodeInfoModule start delay.
+	 */
+	k_timer_start(&nodeinfo_timer, K_SECONDS(CONFIG_MESHTASTIC_NODEINFO_START_DELAY_SEC),
+		      K_SECONDS(CONFIG_MESHTASTIC_NODEINFO_INTERVAL_SEC));
 #endif
 
 	return 0;

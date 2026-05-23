@@ -223,45 +223,24 @@ MESHTASTIC_MODULE_DEFINE(device_telemetry, MESHTASTIC_PORT_TELEMETRY, 0, NULL,
 
 #endif /* CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE */
 
-#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND) ||                                         \
-	(defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                         \
-	 defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND))
-static K_THREAD_STACK_DEFINE(telemetry_stack, 2048);
-static struct k_thread telemetry_thread;
-
-static uint32_t telemetry_period_sec(void)
-{
-	uint32_t period = UINT32_MAX;
-
 #if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
-	period = MIN(period, (uint32_t)CONFIG_MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC);
-#endif
-#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                              \
-	defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
-	period = MIN(period, (uint32_t)CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC);
-#endif
+static void device_metrics_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
 
-	return period;
+	(void)meshtastic_send_device_metrics(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
 }
 
-static void telemetry_thread_fn(void *p1, void *p2, void *p3)
+static K_WORK_DEFINE(device_metrics_work, device_metrics_work_handler);
+
+static void device_metrics_timer_fn(struct k_timer *timer)
 {
-	ARG_UNUSED(p1);
-	ARG_UNUSED(p2);
-	ARG_UNUSED(p3);
+	ARG_UNUSED(timer);
 
-	while (true) {
-		k_sleep(K_SECONDS(telemetry_period_sec()));
-
-#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
-		(void)meshtastic_send_device_metrics(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
-#endif
-#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                              \
-	defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
-		(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
-#endif
-	}
+	(void)k_work_submit(&device_metrics_work);
 }
+
+K_TIMER_DEFINE(device_metrics_timer, device_metrics_timer_fn, NULL);
 #endif
 
 int meshtastic_metrics_init(void)
@@ -279,13 +258,10 @@ int meshtastic_metrics_init(void)
 	k_mutex_init(&device_telemetry_state.lock);
 #endif
 
-#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND) ||                                         \
-	(defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS) &&                                         \
-	 defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND))
-	k_thread_create(&telemetry_thread, telemetry_stack, K_THREAD_STACK_SIZEOF(telemetry_stack),
-			telemetry_thread_fn, NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0,
-			K_NO_WAIT);
-	k_thread_name_set(&telemetry_thread, "meshtastic_telemetry");
+#if defined(CONFIG_MESHTASTIC_DEVICE_METRICS_AUTO_SEND)
+	k_timer_start(&device_metrics_timer,
+		      K_SECONDS(CONFIG_MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC),
+		      K_SECONDS(CONFIG_MESHTASTIC_DEVICE_METRICS_INTERVAL_SEC));
 #endif
 
 	return 0;

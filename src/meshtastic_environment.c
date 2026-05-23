@@ -286,22 +286,24 @@ MESHTASTIC_MODULE_DEFINE(environment_telemetry, MESHTASTIC_PORT_TELEMETRY, 0, NU
 
 #endif /* CONFIG_MESHTASTIC_TELEMETRY_WANT_RESPONSE */
 
-#if MT_ENV_ANY && defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND) &&                      \
-	!defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
-static K_THREAD_STACK_DEFINE(env_stack, 2048);
-static struct k_thread env_thread;
-
-static void env_thread_fn(void *p1, void *p2, void *p3)
+#if MT_ENV_ANY && defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+static void env_work_handler(struct k_work *work)
 {
-	ARG_UNUSED(p1);
-	ARG_UNUSED(p2);
-	ARG_UNUSED(p3);
+	ARG_UNUSED(work);
 
-	while (true) {
-		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC));
-		(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
-	}
+	(void)meshtastic_send_environment(MESHTASTIC_NODE_BROADCAST, K_NO_WAIT);
 }
+
+static K_WORK_DEFINE(env_work, env_work_handler);
+
+static void env_timer_fn(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+
+	(void)k_work_submit(&env_work);
+}
+
+K_TIMER_DEFINE(env_timer, env_timer_fn, NULL);
 #endif
 
 int meshtastic_environment_init(void)
@@ -311,11 +313,9 @@ int meshtastic_environment_init(void)
 #endif
 
 #if MT_ENV_ANY
-#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND) &&                                    \
-	!defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
-	k_thread_create(&env_thread, env_stack, K_THREAD_STACK_SIZEOF(env_stack), env_thread_fn,
-			NULL, NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0, K_NO_WAIT);
-	k_thread_name_set(&env_thread, "meshtastic_env");
+#if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_AUTO_SEND)
+	k_timer_start(&env_timer, K_SECONDS(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC),
+		      K_SECONDS(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS_INTERVAL_SEC));
 #endif
 #else
 	LOG_WRN("CONFIG_MESHTASTIC_ENVIRONMENT_METRICS enabled but no "
