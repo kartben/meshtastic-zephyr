@@ -349,6 +349,34 @@ static int copy_data_payload(const meshtastic_Data *data, uint8_t *payload, size
 	return 0;
 }
 
+static void mesh_pb_decoded_to_packet(const meshtastic_MeshPacket *mesh,
+				      struct meshtastic_packet *packet)
+{
+	*packet = (struct meshtastic_packet){
+		.from = mesh->from,
+		.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
+		.id = mesh->id,
+		.portnum = (uint32_t)mesh->decoded.portnum,
+		.payload = mesh->decoded.payload.bytes,
+		.payload_len = mesh->decoded.payload.size,
+		.data_dest = mesh->decoded.dest,
+		.data_source = mesh->decoded.source,
+		.request_id = mesh->decoded.request_id,
+		.reply_id = mesh->decoded.reply_id,
+		.hop_limit = mesh->hop_limit,
+		.hop_start = mesh->hop_start,
+		.channel = 0U,
+		.channel_index = (mesh->channel < MESHTASTIC_MAX_CHANNELS)
+					 ? (uint8_t)mesh->channel
+					 : MESHTASTIC_CHANNEL_INDEX_INVALID,
+		.want_ack = mesh->want_ack,
+		.via_mqtt = mesh->via_mqtt,
+		.want_response = mesh->decoded.want_response,
+		.next_hop = mesh->next_hop,
+		.relay_node = mesh->relay_node,
+	};
+}
+
 int meshtastic_mesh_pb_to_packet(const meshtastic_MeshPacket *mesh,
 				 struct meshtastic_packet *packet, uint8_t *payload,
 				 size_t payload_len)
@@ -564,41 +592,20 @@ int meshtastic_build_wire_packet(const struct meshtastic_packet *packet, uint8_t
 int meshtastic_send_mesh_pb(const meshtastic_MeshPacket *mesh)
 {
 	struct meshtastic_packet packet;
-	uint32_t encrypted_len;
+	uint8_t wire[MESHTASTIC_PKT_MAX];
 	struct meshtastic_wire_header *hdr;
+	uint32_t encrypted_len;
+	uint32_t wire_len;
 	uint8_t hop_limit;
 	uint8_t hop_start;
-	int ret;
+	uint8_t wire_hash;
 
 	if (mesh == NULL) {
 		return -EINVAL;
 	}
 
 	if (mesh->which_payload_variant == meshtastic_MeshPacket_decoded_tag) {
-		packet = (struct meshtastic_packet){
-			.from = mesh->from,
-			.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
-			.id = mesh->id,
-			.portnum = (uint32_t)mesh->decoded.portnum,
-			.payload = mesh->decoded.payload.bytes,
-			.payload_len = mesh->decoded.payload.size,
-			.data_dest = mesh->decoded.dest,
-			.data_source = mesh->decoded.source,
-			.request_id = mesh->decoded.request_id,
-			.reply_id = mesh->decoded.reply_id,
-			.hop_limit = mesh->hop_limit,
-			.hop_start = mesh->hop_start,
-			.channel = 0U,
-			.channel_index = (mesh->channel < MESHTASTIC_MAX_CHANNELS)
-						 ? (uint8_t)mesh->channel
-						 : MESHTASTIC_CHANNEL_INDEX_INVALID,
-			.want_ack = mesh->want_ack,
-			.via_mqtt = mesh->via_mqtt,
-			.want_response = mesh->decoded.want_response,
-			.next_hop = mesh->next_hop,
-			.relay_node = mesh->relay_node,
-		};
-
+		mesh_pb_decoded_to_packet(mesh, &packet);
 		return meshtastic_send_packet(&packet, K_FOREVER);
 	}
 
@@ -613,58 +620,46 @@ int meshtastic_send_mesh_pb(const meshtastic_MeshPacket *mesh)
 
 	hop_limit = (mesh->hop_limit == 0U) ? mt.hop_limit : mesh->hop_limit;
 	hop_start = (mesh->hop_start == 0U) ? hop_limit : mesh->hop_start;
+	if (mesh->channel < MESHTASTIC_MAX_CHANNELS) {
+		wire_hash = meshtastic_channels_get_hash((uint8_t)mesh->channel);
+	} else {
+		wire_hash = (mesh->channel != 0U) ? (uint8_t)mesh->channel : mt.ch_hash;
+	}
 
-	k_mutex_lock(&mt_ws.lock, K_FOREVER);
+	packet = (struct meshtastic_packet){
+		.from = (mesh->from != 0U) ? mesh->from : mt.node_id,
+		.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
+		.id = (mesh->id != 0U) ? mesh->id : meshtastic_allocate_packet_id(),
+		.hop_limit = hop_limit,
+		.hop_start = hop_start,
+		.channel = wire_hash,
+		.channel_index = (mesh->channel < MESHTASTIC_MAX_CHANNELS)
+					 ? (uint8_t)mesh->channel
+					 : MESHTASTIC_CHANNEL_INDEX_INVALID,
+		.want_ack = mesh->want_ack,
+		.via_mqtt = mesh->via_mqtt,
+		.next_hop = mesh->next_hop,
+		.relay_node = mesh->relay_node,
+	};
 
-	hdr = (struct meshtastic_wire_header *)mt_ws.wire;
-	hdr->dest = sys_cpu_to_le32((mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST);
-	hdr->src = sys_cpu_to_le32((mesh->from != 0U) ? mesh->from : mt.node_id);
-	hdr->id = sys_cpu_to_le32((mesh->id != 0U) ? mesh->id : meshtastic_allocate_packet_id());
-	hdr->flags = (hop_limit & MESHTASTIC_FLAGS_HOP_LIMIT_MASK) |
-		     ((hop_start & 0x07U) << MESHTASTIC_FLAGS_HOP_START_SHIFT);
-	if (mesh->want_ack) {
+	hdr = (struct meshtastic_wire_header *)wire;
+	hdr->dest = sys_cpu_to_le32(packet.to);
+	hdr->src = sys_cpu_to_le32(packet.from);
+	hdr->id = sys_cpu_to_le32(packet.id);
+	hdr->flags = (packet.hop_limit & MESHTASTIC_FLAGS_HOP_LIMIT_MASK) |
+		     ((packet.hop_start & 0x07U) << MESHTASTIC_FLAGS_HOP_START_SHIFT);
+	if (packet.want_ack) {
 		hdr->flags |= MESHTASTIC_FLAGS_WANT_ACK;
 	}
-	if (mesh->via_mqtt) {
+	if (packet.via_mqtt) {
 		hdr->flags |= MESHTASTIC_FLAGS_VIA_MQTT;
 	}
-	if (mesh->channel < MESHTASTIC_MAX_CHANNELS) {
-		hdr->channel = meshtastic_channels_get_hash((uint8_t)mesh->channel);
-	} else {
-		hdr->channel = (mesh->channel != 0U) ? (uint8_t)mesh->channel : mt.ch_hash;
-	}
-	hdr->next_hop = mesh->next_hop;
-	hdr->relay_node = mesh->relay_node;
-	memcpy(mt_ws.wire + MESHTASTIC_HDR_LEN, mesh->encrypted.bytes, encrypted_len);
+	hdr->channel = packet.channel;
+	hdr->next_hop = packet.next_hop;
+	hdr->relay_node = packet.relay_node;
 
-	{
-		uint8_t wire[MESHTASTIC_PKT_MAX];
-		const uint32_t wire_len = MESHTASTIC_HDR_LEN + encrypted_len;
+	memcpy(wire + MESHTASTIC_HDR_LEN, mesh->encrypted.bytes, encrypted_len);
+	wire_len = MESHTASTIC_HDR_LEN + encrypted_len;
 
-		memcpy(wire, mt_ws.wire, wire_len);
-		k_mutex_unlock(&mt_ws.lock);
-
-		ret = meshtastic_radio_send_wire_wait(wire, wire_len, K_FOREVER);
-
-		if (ret == 0) {
-#if defined(CONFIG_MESHTASTIC_MQTT)
-			struct meshtastic_packet tx_packet = {
-				.from = (mesh->from != 0U) ? mesh->from : mt.node_id,
-				.to = (mesh->to != 0U) ? mesh->to : MESHTASTIC_NODE_BROADCAST,
-				.id = sys_le32_to_cpu(hdr->id),
-				.hop_limit = hop_limit,
-				.hop_start = hop_start,
-				.channel = hdr->channel,
-				.want_ack = mesh->want_ack,
-				.via_mqtt = mesh->via_mqtt,
-				.next_hop = mesh->next_hop,
-				.relay_node = mesh->relay_node,
-			};
-
-			meshtastic_mqtt_on_tx(&tx_packet, wire, wire_len);
-#endif
-		}
-	}
-
-	return ret;
+	return meshtastic_send_wire_packet(&packet, wire, wire_len, K_FOREVER, false);
 }

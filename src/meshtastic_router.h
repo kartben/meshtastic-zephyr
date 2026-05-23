@@ -26,20 +26,10 @@ extern "C" {
 /**
  * @brief Process one raw LoRa frame from the radio RX path.
  *
- * Filters duplicates, decodes the wire packet, then passes the result to
- * @ref meshtastic_handle_inbound_packet.
+ * Filters duplicates, decodes the wire packet, then runs local delivery,
+ * module dispatch, MQTT uplink, and relay policy.
  */
 void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi, int8_t snr);
-
-/**
- * @brief Common inbound path after LoRa RX or MQTT downlink injection.
- *
- * Delivers locally and runs port/routing hooks when @p decoded is true; may flood-relay the
- * original wire frame when @p wire is non-NULL. @p wire may be @c NULL for gateway- injected
- * packets.
- */
-void meshtastic_handle_inbound_packet(const struct meshtastic_packet *packet, const uint8_t *wire,
-				      size_t wire_len, bool decoded);
 
 /**
  * @brief Inject a @c MeshPacket from a gateway (e.g. MQTT) into the mesh pipeline.
@@ -60,15 +50,6 @@ void meshtastic_routing_sniff_rebroadcast(const struct meshtastic_wire_header *h
 
 /** @brief Routing-port handling for decoded packets (e.g. ACK replies). */
 void meshtastic_routing_on_decoded(const struct meshtastic_packet *packet);
-
-/**
- * @brief Post-RX hook for relay policy.
- *
- * Currently delegates to @ref meshtastic_routing_sniff_rebroadcast.
- */
-void meshtastic_routing_sniff(const struct meshtastic_wire_header *hdr, const uint8_t *wire,
-			      size_t wire_len, const struct meshtastic_packet *packet,
-			      bool decoded);
 
 #ifdef __cplusplus
 }

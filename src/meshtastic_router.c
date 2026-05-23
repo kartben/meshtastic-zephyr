@@ -138,6 +138,51 @@ static void deliver_packet(const struct meshtastic_packet *packet)
 	meshtastic_phoneapi_on_packet(packet);
 }
 
+static void handle_inbound_packet(const struct meshtastic_packet *packet, const uint8_t *wire,
+				  size_t wire_len, bool decoded)
+{
+	const struct meshtastic_wire_header *hdr = NULL;
+
+	if (packet == NULL) {
+		return;
+	}
+
+	if (wire != NULL && wire_len >= MESHTASTIC_HDR_LEN) {
+		hdr = (const struct meshtastic_wire_header *)wire;
+	}
+
+	if (decoded) {
+		LOG_INF("RX from 0x%08x to 0x%08x port=%u len=%zu ch_idx=%u", packet->from,
+			packet->to, (unsigned int)packet->portnum, packet->payload_len,
+			packet->channel_index);
+
+		if (meshtastic_rebroadcast_mode() ==
+			    meshtastic_Config_DeviceConfig_RebroadcastMode_CORE_PORTNUMS_ONLY &&
+		    packet->portnum != MESHTASTIC_PORT_TEXT_MESSAGE &&
+		    packet->portnum != MESHTASTIC_PORT_POSITION &&
+		    packet->portnum != MESHTASTIC_PORT_NODEINFO &&
+		    packet->portnum != MESHTASTIC_PORT_ROUTING &&
+		    packet->portnum != MESHTASTIC_PORT_TELEMETRY) {
+			LOG_DBG("CORE_PORTNUMS_ONLY: drop port %u", (unsigned int)packet->portnum);
+		} else if (packet->to == mt.node_id || packet->to == MESHTASTIC_NODE_BROADCAST) {
+			deliver_packet(packet);
+		}
+
+#if defined(CONFIG_MESHTASTIC_MQTT)
+		meshtastic_mqtt_on_rx(packet, wire, wire_len);
+#endif
+		meshtastic_routing_on_decoded(packet);
+		meshtastic_dispatch_modules(packet);
+	} else if (hdr != NULL) {
+		LOG_DBG("RX encrypted relay 0x%08x->0x%08x id=0x%08x", packet->from, packet->to,
+			packet->id);
+	}
+
+	if (hdr != NULL) {
+		meshtastic_routing_sniff_rebroadcast(hdr, wire, wire_len, packet);
+	}
+}
+
 void meshtastic_routing_sniff_rebroadcast(const struct meshtastic_wire_header *hdr,
 					  const uint8_t *wire, size_t wire_len,
 					  const struct meshtastic_packet *packet)
@@ -255,7 +300,7 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 	mt.status.last_rssi = rssi;
 	mt.status.last_snr = snr;
 
-	meshtastic_handle_inbound_packet(&packet, buf, (size_t)len, decoded);
+	handle_inbound_packet(&packet, buf, (size_t)len, decoded);
 }
 
 static void log_inject_mesh_packet(const char *phase, const meshtastic_MeshPacket *mesh)
@@ -371,53 +416,8 @@ int meshtastic_inject_downlink_mesh_packet(const meshtastic_MeshPacket *mesh)
 
 	LOG_DBG("inject delivering locally port=%u payload_len=%zu", (unsigned int)packet.portnum,
 		packet.payload_len);
-	meshtastic_handle_inbound_packet(&packet, NULL, 0U, decoded);
+	handle_inbound_packet(&packet, NULL, 0U, decoded);
 	LOG_DBG("inject done (local delivery)");
 
 	return 0;
-}
-
-void meshtastic_handle_inbound_packet(const struct meshtastic_packet *packet, const uint8_t *wire,
-				      size_t wire_len, bool decoded)
-{
-	const struct meshtastic_wire_header *hdr = NULL;
-
-	if (packet == NULL) {
-		return;
-	}
-
-	if (wire != NULL && wire_len >= MESHTASTIC_HDR_LEN) {
-		hdr = (const struct meshtastic_wire_header *)wire;
-	}
-
-	if (decoded) {
-		LOG_INF("RX from 0x%08x to 0x%08x port=%u len=%zu ch_idx=%u", packet->from,
-			packet->to, (unsigned int)packet->portnum, packet->payload_len,
-			packet->channel_index);
-
-		if (meshtastic_rebroadcast_mode() ==
-			    meshtastic_Config_DeviceConfig_RebroadcastMode_CORE_PORTNUMS_ONLY &&
-		    packet->portnum != MESHTASTIC_PORT_TEXT_MESSAGE &&
-		    packet->portnum != MESHTASTIC_PORT_POSITION &&
-		    packet->portnum != MESHTASTIC_PORT_NODEINFO &&
-		    packet->portnum != MESHTASTIC_PORT_ROUTING &&
-		    packet->portnum != MESHTASTIC_PORT_TELEMETRY) {
-			LOG_DBG("CORE_PORTNUMS_ONLY: drop port %u", (unsigned int)packet->portnum);
-		} else if (packet->to == mt.node_id || packet->to == MESHTASTIC_NODE_BROADCAST) {
-			deliver_packet(packet);
-		}
-
-#if defined(CONFIG_MESHTASTIC_MQTT)
-		meshtastic_mqtt_on_rx(packet, wire, wire_len);
-#endif
-		meshtastic_routing_on_decoded(packet);
-		meshtastic_dispatch_modules(packet);
-	} else if (hdr != NULL) {
-		LOG_DBG("RX encrypted relay 0x%08x->0x%08x id=0x%08x", packet->from, packet->to,
-			packet->id);
-	}
-
-	if (hdr != NULL) {
-		meshtastic_routing_sniff_rebroadcast(hdr, wire, wire_len, packet);
-	}
 }

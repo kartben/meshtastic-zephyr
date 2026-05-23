@@ -85,6 +85,8 @@ uint8_t meshtastic_runtime_hop_limit(void);
 void meshtastic_set_ble_connected(bool connected);
 
 int meshtastic_radio_init(void);
+int meshtastic_send_wire_packet(const struct meshtastic_packet *packet, const uint8_t *wire,
+			       uint32_t wire_len, k_timeout_t wait, bool emit_done);
 
 struct meshtastic_settings_apply {
 	const char *name;
