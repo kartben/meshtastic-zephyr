@@ -55,6 +55,9 @@ STATS_SECT_ENTRY(decode_failures)
 STATS_SECT_ENTRY(rx_dropped)
 STATS_SECT_ENTRY(rx_rearm_failures)
 STATS_SECT_ENTRY(packet_loss)
+STATS_SECT_ENTRY(last_rx_from)
+STATS_SECT_ENTRY(last_rssi)
+STATS_SECT_ENTRY(last_snr)
 STATS_SECT_END;
 
 STATS_NAME_START(meshtastic_stats)
@@ -67,21 +70,89 @@ STATS_NAME(meshtastic_stats, decode_failures)
 STATS_NAME(meshtastic_stats, rx_dropped)
 STATS_NAME(meshtastic_stats, rx_rearm_failures)
 STATS_NAME(meshtastic_stats, packet_loss)
+STATS_NAME(meshtastic_stats, last_rx_from)
+STATS_NAME(meshtastic_stats, last_rssi)
+STATS_NAME(meshtastic_stats, last_snr)
 STATS_NAME_END(meshtastic_stats);
 
 STATS_SECT_DECL(meshtastic_stats) meshtastic_stats;
 
-static void mt_collect_comm_stats(void)
+void meshtastic_stats_record_tx_done(void)
 {
-	meshtastic_stats.s.tx_packets = mt.status.tx_packets;
-	meshtastic_stats.s.tx_failures = mt.status.tx_failures;
-	meshtastic_stats.s.rx_packets = mt.status.rx_packets;
-	meshtastic_stats.s.relayed_packets = mt.status.relayed_packets;
-	meshtastic_stats.s.duplicate_packets = mt.status.duplicate_packets;
-	meshtastic_stats.s.decode_failures = mt.status.decode_failures;
-	meshtastic_stats.s.rx_dropped = mt.status.rx_dropped;
-	meshtastic_stats.s.rx_rearm_failures = mt.status.rx_rearm_failures;
-	meshtastic_stats.s.packet_loss = mt.status.tx_failures + mt.status.rx_dropped;
+	STATS_INC(meshtastic_stats, tx_packets);
+}
+
+void meshtastic_stats_record_tx_failure(void)
+{
+	STATS_INC(meshtastic_stats, tx_failures);
+	STATS_INC(meshtastic_stats, packet_loss);
+}
+
+void meshtastic_stats_record_rx_drop(void)
+{
+	STATS_INC(meshtastic_stats, rx_dropped);
+	STATS_INC(meshtastic_stats, packet_loss);
+}
+
+void meshtastic_stats_record_rx_rearm_failure(void)
+{
+	STATS_INC(meshtastic_stats, rx_rearm_failures);
+}
+
+void meshtastic_stats_record_duplicate(void)
+{
+	STATS_INC(meshtastic_stats, duplicate_packets);
+}
+
+void meshtastic_stats_record_relayed(void)
+{
+	STATS_INC(meshtastic_stats, relayed_packets);
+}
+
+void meshtastic_stats_record_decode_failure(void)
+{
+	STATS_INC(meshtastic_stats, decode_failures);
+}
+
+void meshtastic_stats_record_rx(uint32_t src, int16_t rssi, int8_t snr)
+{
+	STATS_INC(meshtastic_stats, rx_packets);
+	meshtastic_stats.s.last_rx_from = src;
+	meshtastic_stats.s.last_rssi = (uint32_t)(int32_t)rssi;
+	meshtastic_stats.s.last_snr = (uint32_t)(int32_t)snr;
+}
+
+void meshtastic_stats_fill_status(struct meshtastic_status *status)
+{
+	status->tx_packets = meshtastic_stats.s.tx_packets;
+	status->tx_failures = meshtastic_stats.s.tx_failures;
+	status->rx_packets = meshtastic_stats.s.rx_packets;
+	status->relayed_packets = meshtastic_stats.s.relayed_packets;
+	status->duplicate_packets = meshtastic_stats.s.duplicate_packets;
+	status->decode_failures = meshtastic_stats.s.decode_failures;
+	status->rx_dropped = meshtastic_stats.s.rx_dropped;
+	status->rx_rearm_failures = meshtastic_stats.s.rx_rearm_failures;
+	status->last_rx_from = meshtastic_stats.s.last_rx_from;
+	status->last_rssi = (int16_t)(int32_t)meshtastic_stats.s.last_rssi;
+	status->last_snr = (int8_t)(int32_t)meshtastic_stats.s.last_snr;
+}
+#else
+void meshtastic_stats_record_tx_done(void) {}
+void meshtastic_stats_record_tx_failure(void) {}
+void meshtastic_stats_record_rx_drop(void) {}
+void meshtastic_stats_record_rx_rearm_failure(void) {}
+void meshtastic_stats_record_duplicate(void) {}
+void meshtastic_stats_record_relayed(void) {}
+void meshtastic_stats_record_decode_failure(void) {}
+void meshtastic_stats_record_rx(uint32_t src, int16_t rssi, int8_t snr)
+{
+	ARG_UNUSED(src);
+	ARG_UNUSED(rssi);
+	ARG_UNUSED(snr);
+}
+void meshtastic_stats_fill_status(struct meshtastic_status *status)
+{
+	ARG_UNUSED(status);
 }
 #endif
 
@@ -124,7 +195,7 @@ static int mt_radio_arm_rx(void)
 
 	if (ret < 0) {
 		mt.radio_rx_armed = false;
-		mt.status.rx_rearm_failures++;
+		meshtastic_stats_record_rx_rearm_failure();
 		LOG_ERR("lora_recv_async arm failed (%d)", ret);
 	} else {
 		mt.radio_rx_armed = true;
@@ -205,10 +276,10 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 		if (ret == -EBUSY) {
 			LOG_DBG("TX failed: channel busy after retries exhausted");
 		}
-		mt.status.tx_failures++;
+		meshtastic_stats_record_tx_failure();
 		meshtastic_emit_event(MESHTASTIC_EVENT_TX_FAILED, ret, NULL);
 	} else {
-		mt.status.tx_packets++;
+		meshtastic_stats_record_tx_done();
 #if defined(CONFIG_MESHTASTIC_AIRTIME)
 		meshtastic_airtime_log(MESHTASTIC_AIRTIME_TX,
 				       meshtastic_airtime_packet_ms(pkt_len));
@@ -242,7 +313,7 @@ static void mt_rx_cb(const struct device *dev, uint8_t *data, uint16_t size, int
 	memcpy(slot.buf, data, size);
 
 	if (k_msgq_put(&mt_rx_msgq, &slot, K_NO_WAIT) != 0) {
-		mt.status.rx_dropped++;
+		meshtastic_stats_record_rx_drop();
 		LOG_DBG("RX queue full, dropped %u-byte frame", size);
 	}
 }
@@ -257,9 +328,6 @@ static void mt_thread_fn(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	while (true) {
-#if defined(CONFIG_MESHTASTIC_STATS)
-		mt_collect_comm_stats();
-#endif
 		ret = k_msgq_get(&mt_rx_msgq, &slot, K_MSEC(CONFIG_MESHTASTIC_RX_REARM_RETRY_MS));
 		if (ret == 0) {
 			meshtastic_router_process_lora_rx(slot.buf, slot.len, slot.rssi, slot.snr);

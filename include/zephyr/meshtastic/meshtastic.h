@@ -181,11 +181,12 @@ struct meshtastic_packet {
 	int8_t snr;
 };
 
-/** Runtime Meshtastic stack counters and state. */
+/** Runtime Meshtastic stack state and optional utilization counters. */
 struct meshtastic_status {
 	bool initialized;
 	bool ble_connected;
 	uint32_t node_id;
+#if defined(CONFIG_MESHTASTIC_STATS)
 	uint32_t tx_packets;
 	uint32_t tx_failures;
 	uint32_t rx_packets;
@@ -197,6 +198,7 @@ struct meshtastic_status {
 	uint32_t last_rx_from;
 	int16_t last_rssi;
 	int8_t last_snr;
+#endif
 };
 
 /** Event payload passed to meshtastic_event_cb_t. */
@@ -410,7 +412,10 @@ void meshtastic_set_recv_cb(meshtastic_recv_cb_t cb);
 void meshtastic_set_event_cb(meshtastic_event_cb_t cb, void *user_data);
 
 /**
- * @brief Copy current stack status counters.
+ * @brief Copy current stack status.
+ *
+ * Base state fields are always populated. Utilization counters are populated
+ * only when @kconfig{CONFIG_MESHTASTIC_STATS} is enabled.
  *
  * @param status Destination for status data.
  *

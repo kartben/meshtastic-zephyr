@@ -33,7 +33,7 @@ static bool dup_check(uint32_t src, uint32_t id)
 {
 	for (int i = 0; i < CONFIG_MESHTASTIC_DUP_CACHE_SIZE; i++) {
 		if (mt.dup_cache[i].src == src && mt.dup_cache[i].id == id) {
-			mt.status.duplicate_packets++;
+			meshtastic_stats_record_duplicate();
 			return true;
 		}
 	}
@@ -80,7 +80,7 @@ static void relay_packet(const uint8_t *buf, int len, const struct meshtastic_wi
 	if (ret < 0) {
 		LOG_ERR("Relay TX failed (%d)", ret);
 	} else {
-		mt.status.relayed_packets++;
+		meshtastic_stats_record_relayed();
 	}
 }
 
@@ -247,13 +247,10 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 #endif
 
 	if (!decoded) {
-		mt.status.decode_failures++;
+		meshtastic_stats_record_decode_failure();
 	}
 
-	mt.status.rx_packets++;
-	mt.status.last_rx_from = src;
-	mt.status.last_rssi = rssi;
-	mt.status.last_snr = snr;
+	meshtastic_stats_record_rx(src, rssi, snr);
 
 	meshtastic_handle_inbound_packet(&packet, buf, (size_t)len, decoded);
 }

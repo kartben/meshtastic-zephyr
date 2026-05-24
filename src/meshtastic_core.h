@@ -54,7 +54,7 @@ struct meshtastic_context {
 	struct meshtastic_dup_entry dup_cache[CONFIG_MESHTASTIC_DUP_CACHE_SIZE];
 	uint8_t dup_head;
 	struct k_mutex lock;
-	struct meshtastic_status status;
+	bool ble_connected;
 	bool initialized;
 	bool radio_rx_armed;
 };
@@ -85,6 +85,15 @@ uint8_t meshtastic_runtime_hop_limit(void);
 void meshtastic_set_ble_connected(bool connected);
 
 int meshtastic_radio_init(void);
+void meshtastic_stats_record_tx_done(void);
+void meshtastic_stats_record_tx_failure(void);
+void meshtastic_stats_record_rx_drop(void);
+void meshtastic_stats_record_rx_rearm_failure(void);
+void meshtastic_stats_record_duplicate(void);
+void meshtastic_stats_record_relayed(void);
+void meshtastic_stats_record_decode_failure(void);
+void meshtastic_stats_record_rx(uint32_t src, int16_t rssi, int8_t snr);
+void meshtastic_stats_fill_status(struct meshtastic_status *status);
 
 struct meshtastic_settings_apply {
 	const char *name;
