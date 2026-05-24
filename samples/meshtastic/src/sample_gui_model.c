@@ -2,7 +2,10 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <errno.h>
 #include <string.h>
+
+#include <zephyr/sys/printk.h>
 
 #include "sample_gui_model.h"
 
@@ -13,7 +16,78 @@ void meshtastic_sample_gui_model_init(struct meshtastic_sample_gui_model *model,
 	}
 
 	(void)memset(model, 0, sizeof(*model));
-	model->node_id = node_id;
+	model->status.node_id = node_id;
+	(void)snprintk(model->last_event, sizeof(model->last_event), "Waiting for mesh activity");
+	model->has_last_event = true;
+	model->dirty = true;
+}
+
+int meshtastic_sample_gui_model_refresh_status(struct meshtastic_sample_gui_model *model)
+{
+	struct meshtastic_status status;
+	int ret;
+
+	if (model == NULL) {
+		return -EINVAL;
+	}
+
+	ret = meshtastic_get_status(&status);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (memcmp(&model->status, &status, sizeof(status)) != 0) {
+		model->status = status;
+		model->dirty = true;
+	}
+
+	return 0;
+}
+
+void meshtastic_sample_gui_model_set_event(struct meshtastic_sample_gui_model *model,
+					   const struct meshtastic_event *event)
+{
+	if (model == NULL || event == NULL) {
+		return;
+	}
+
+	switch (event->type) {
+	case MESHTASTIC_EVENT_TEXT_MESSAGE:
+		(void)snprintk(model->last_event, sizeof(model->last_event),
+			       "Text message received");
+		break;
+	case MESHTASTIC_EVENT_TX_DONE:
+		if (event->packet != NULL) {
+			(void)snprintk(model->last_event, sizeof(model->last_event),
+				       "TX complete to 0x%08x", event->packet->to);
+		} else {
+			(void)snprintk(model->last_event, sizeof(model->last_event), "TX complete");
+		}
+		break;
+	case MESHTASTIC_EVENT_TX_FAILED:
+		(void)snprintk(model->last_event, sizeof(model->last_event), "TX failed (%d)",
+			       event->err);
+		break;
+	case MESHTASTIC_EVENT_BLE_CONNECTED:
+		(void)snprintk(model->last_event, sizeof(model->last_event), "BLE connected");
+		break;
+	case MESHTASTIC_EVENT_BLE_DISCONNECTED:
+		(void)snprintk(model->last_event, sizeof(model->last_event), "BLE disconnected");
+		break;
+	case MESHTASTIC_EVENT_GNSS_FIX:
+		(void)snprintk(model->last_event, sizeof(model->last_event), "GNSS fix updated");
+		break;
+	case MESHTASTIC_EVENT_METRICS_ERROR:
+		(void)snprintk(model->last_event, sizeof(model->last_event), "Metrics error (%d)",
+			       event->err);
+		break;
+	case MESHTASTIC_EVENT_PACKET_RECEIVED:
+	default:
+		return;
+	}
+
+	model->has_last_event = true;
+	model->dirty = true;
 }
 
 void meshtastic_sample_gui_model_set_text_message(struct meshtastic_sample_gui_model *model,
@@ -27,9 +101,9 @@ void meshtastic_sample_gui_model_set_text_message(struct meshtastic_sample_gui_m
 		return;
 	}
 
-	model->last_sender = packet->from;
-	model->last_rssi = packet->rssi;
-	model->last_snr = packet->snr;
+	model->last_message_sender = packet->from;
+	model->last_message_rssi = packet->rssi;
+	model->last_message_snr = packet->snr;
 	model->has_text_message = true;
 	model->dirty = true;
 

@@ -8,12 +8,34 @@ source "Kconfig.zephyr"
 menu "Meshtastic sample options"
 
 config MESHTASTIC_SAMPLE_GUI
-	bool "Build sample GUI integration scaffolding"
+	bool "Build sample GUI integration"
 	default y
 	help
 	  Build the sample-local GUI facade, Meshtastic-to-model adapter, and
-	  renderer scaffolding in separate compilation units. Display-specific
-	  backends can later replace the renderer without moving UI code into
-	  main.c.
+	  renderer in separate compilation units. The sample keeps Meshtastic
+	  event handling, UI state, and rendering separate so that a richer UI
+	  can evolve without moving display code into main.c.
+
+if MESHTASTIC_SAMPLE_GUI
+
+config MESHTASTIC_SAMPLE_GUI_LVGL
+	bool "Use an LVGL-backed sample GUI renderer"
+	depends on LVGL
+	default y if LVGL
+	help
+	  Render the sample-local UI with LVGL when a board provides a usable
+	  Zephyr display. When disabled, or when no ready display is available
+	  at runtime, the sample uses a structured log renderer instead.
+
+config MESHTASTIC_SAMPLE_GUI_REFRESH_MS
+	int "Sample GUI refresh cadence in milliseconds"
+	range 50 5000
+	default 250
+	help
+	  Periodic refresh interval used while the sample waits between radio
+	  transmissions. This keeps status counters and any GUI backend up to
+	  date without pushing UI code into the sample entry point.
+
+endif
 
 endmenu

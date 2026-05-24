@@ -4,9 +4,10 @@ Meshtastic sample app
 Overview
 ********
 
-This sample demonstrates the Zephyr-native Meshtastic stack. It initializes the stack and then
-registers a receive callback that logs incoming text messages and broadcasts a greeting at regular
-interval on the default "LongFast" channel.
+This sample demonstrates the Zephyr-native Meshtastic stack. It initializes the stack, registers a
+receive callback that logs incoming text messages, keeps a sample-local UI model in sync with
+Meshtastic events and status counters, and broadcasts a greeting at regular interval on the default
+"LongFast" channel.
 
 Requirements
 ************
@@ -33,6 +34,12 @@ ID instead, enable custom source and set the default:
 
 The sample can also be built for the LoRa radio emulator on ``native_sim``
 by adding the appropriate overlay.
+
+The sample-local GUI layer is enabled by default with
+``CONFIG_MESHTASTIC_SAMPLE_GUI=y``. When LVGL support is enabled in the build
+(``CONFIG_MESHTASTIC_SAMPLE_GUI_LVGL=y`` and ``CONFIG_LVGL=y``), the sample
+renders a compact status/message view through LVGL. Otherwise it falls back to
+a structured log renderer while keeping the same Meshtastic-to-UI model split.
 
 Shell commands (TBC)
 ********************
