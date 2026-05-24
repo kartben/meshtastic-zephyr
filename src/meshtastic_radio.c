@@ -130,21 +130,6 @@ void meshtastic_stats_record_rx(uint32_t src, int16_t rssi, int8_t snr)
 		    meshtastic_stats.s.last_snr = (uint32_t)(int32_t)snr;);
 }
 
-void meshtastic_stats_fill_status(struct meshtastic_status *status)
-{
-	MT_STATS_DO(status->tx_packets = meshtastic_stats.s.tx_packets;
-		    status->tx_failures = meshtastic_stats.s.tx_failures;
-		    status->rx_packets = meshtastic_stats.s.rx_packets;
-		    status->relayed_packets = meshtastic_stats.s.relayed_packets;
-		    status->duplicate_packets = meshtastic_stats.s.duplicate_packets;
-		    status->decode_failures = meshtastic_stats.s.decode_failures;
-		    status->rx_dropped = meshtastic_stats.s.rx_dropped;
-		    status->rx_rearm_failures = meshtastic_stats.s.rx_rearm_failures;
-		    status->last_rx_from = meshtastic_stats.s.last_rx_from;
-		    status->last_rssi = (int16_t)(int32_t)meshtastic_stats.s.last_rssi;
-		    status->last_snr = (int8_t)(int32_t)meshtastic_stats.s.last_snr;);
-}
-
 /*
  * Serialises radio state transitions.  Continuous async RX runs in the LoRa
  * driver; only TX and the surrounding stop/re-arm of async RX touch radio

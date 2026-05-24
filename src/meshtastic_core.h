@@ -93,7 +93,6 @@ void meshtastic_stats_record_duplicate(void);
 void meshtastic_stats_record_relayed(void);
 void meshtastic_stats_record_decode_failure(void);
 void meshtastic_stats_record_rx(uint32_t src, int16_t rssi, int8_t snr);
-void meshtastic_stats_fill_status(struct meshtastic_status *status);
 
 struct meshtastic_settings_apply {
 	const char *name;

@@ -269,20 +269,8 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "node: 0x%08x", status.node_id);
 	shell_print(sh, "initialized: %s", status.initialized ? "yes" : "no");
 	shell_print(sh, "ble connected: %s", status.ble_connected ? "yes" : "no");
-#if defined(CONFIG_MESHTASTIC_STATS)
-	shell_print(sh, "tx: %u ok, %u failed", status.tx_packets, status.tx_failures);
-	shell_print(sh, "rx: %u decoded, %u duplicates, %u decode failures", status.rx_packets,
-		    status.duplicate_packets, status.decode_failures);
-	shell_print(sh, "rx dropped: %u, rx re-arm failures: %u", status.rx_dropped,
-		    status.rx_rearm_failures);
-	shell_print(sh, "relayed: %u", status.relayed_packets);
-	shell_print(sh, "last rx: from=0x%08x rssi=%d snr=%d", status.last_rx_from,
-		    status.last_rssi, status.last_snr);
-#else
 	shell_print(sh,
-		    "utilization stats not available; enable CONFIG_MESHTASTIC_STATS and use "
-		    "'stats show meshtastic'");
-#endif
+		    "utilization stats are available via 'stats show meshtastic' when enabled");
 	shell_print(sh, "primary channel: %u \"%s\" hash=0x%02x",
 		    (unsigned int)meshtastic_channels_primary_index(),
 		    meshtastic_channels_primary_name(), meshtastic_channels_primary_hash());
