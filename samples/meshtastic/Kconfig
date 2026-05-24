@@ -4,3 +4,16 @@
 # SPDX-License-Identifier: GPL-3.0
 
 source "Kconfig.zephyr"
+
+menu "Meshtastic sample options"
+
+config MESHTASTIC_SAMPLE_GUI
+	bool "Build sample GUI integration scaffolding"
+	default y
+	help
+	  Build the sample-local GUI facade, Meshtastic-to-model adapter, and
+	  renderer scaffolding in separate compilation units. Display-specific
+	  backends can later replace the renderer without moving UI code into
+	  main.c.
+
+endmenu
