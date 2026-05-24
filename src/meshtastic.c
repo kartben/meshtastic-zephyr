@@ -516,9 +516,7 @@ int meshtastic_get_status(struct meshtastic_status *status)
 	status->initialized = mt.initialized;
 	status->ble_connected = mt.ble_connected;
 	status->node_id = mt.node_id;
-#if defined(CONFIG_MESHTASTIC_STATS)
 	meshtastic_stats_fill_status(status);
-#endif
 
 	return 0;
 }
