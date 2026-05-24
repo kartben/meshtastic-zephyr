@@ -19,6 +19,7 @@
 #include "meshtastic_packet.h"
 #include "meshtastic_router.h"
 #include "meshtastic_airtime.h"
+#include "meshtastic_stats.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
@@ -80,7 +81,7 @@ static int mt_radio_arm_rx(void)
 
 	if (ret < 0) {
 		mt.radio_rx_armed = false;
-		mt.status.rx_rearm_failures++;
+		STATS_INC(meshtastic_stats, rx_rearm_failures);
 		LOG_ERR("lora_recv_async arm failed (%d)", ret);
 	} else {
 		mt.radio_rx_armed = true;
@@ -161,10 +162,10 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 		if (ret == -EBUSY) {
 			LOG_DBG("TX failed: channel busy after retries exhausted");
 		}
-		mt.status.tx_failures++;
+		STATS_INC(meshtastic_stats, tx_failures);
 		meshtastic_emit_event(MESHTASTIC_EVENT_TX_FAILED, ret, NULL);
 	} else {
-		mt.status.tx_packets++;
+		STATS_INC(meshtastic_stats, tx_packets);
 #if defined(CONFIG_MESHTASTIC_AIRTIME)
 		meshtastic_airtime_log(MESHTASTIC_AIRTIME_TX,
 				       meshtastic_airtime_packet_ms(pkt_len));
@@ -198,7 +199,7 @@ static void mt_rx_cb(const struct device *dev, uint8_t *data, uint16_t size, int
 	memcpy(slot.buf, data, size);
 
 	if (k_msgq_put(&mt_rx_msgq, &slot, K_NO_WAIT) != 0) {
-		mt.status.rx_dropped++;
+		STATS_INC(meshtastic_stats, rx_dropped);
 		LOG_DBG("RX queue full, dropped %u-byte frame", size);
 	}
 }

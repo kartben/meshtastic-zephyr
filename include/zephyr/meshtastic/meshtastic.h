@@ -181,22 +181,11 @@ struct meshtastic_packet {
 	int8_t snr;
 };
 
-/** Runtime Meshtastic stack counters and state. */
+/** Runtime Meshtastic stack state. */
 struct meshtastic_status {
 	bool initialized;
 	bool ble_connected;
 	uint32_t node_id;
-	uint32_t tx_packets;
-	uint32_t tx_failures;
-	uint32_t rx_packets;
-	uint32_t relayed_packets;
-	uint32_t duplicate_packets;
-	uint32_t decode_failures;
-	uint32_t rx_dropped;
-	uint32_t rx_rearm_failures;
-	uint32_t last_rx_from;
-	int16_t last_rssi;
-	int8_t last_snr;
 };
 
 /** Event payload passed to meshtastic_event_cb_t. */

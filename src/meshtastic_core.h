@@ -54,8 +54,8 @@ struct meshtastic_context {
 	struct meshtastic_dup_entry dup_cache[CONFIG_MESHTASTIC_DUP_CACHE_SIZE];
 	uint8_t dup_head;
 	struct k_mutex lock;
-	struct meshtastic_status status;
 	bool initialized;
+	bool ble_connected;
 	bool radio_rx_armed;
 };
 

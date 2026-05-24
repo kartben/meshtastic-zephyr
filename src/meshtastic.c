@@ -32,6 +32,7 @@
 #include "meshtastic_settings.h"
 #include "meshtastic_gnss.h"
 #include "meshtastic_mqtt.h"
+#include "meshtastic_stats.h"
 
 #if defined(CONFIG_MESHTASTIC_BLE)
 int meshtastic_ble_init(void);
@@ -193,7 +194,7 @@ void meshtastic_fill_user(meshtastic_User *user)
 
 void meshtastic_set_ble_connected(bool connected)
 {
-	mt.status.ble_connected = connected;
+	mt.ble_connected = connected;
 }
 
 void meshtastic_emit_event(enum meshtastic_event_type type, int err,
@@ -266,10 +267,9 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	mt.next_pkt_id = 1U;
 	mt.next_fromradio_id = 1U;
 	mt.dup_head = 0U;
+	mt.ble_connected = false;
 	mt.radio_rx_armed = false;
 	memset(mt.dup_cache, 0, sizeof(mt.dup_cache));
-	memset(&mt.status, 0, sizeof(mt.status));
-	mt.status.node_id = mt.node_id;
 
 	psa_st = psa_crypto_init();
 	if (psa_st != PSA_SUCCESS) {
@@ -280,13 +280,16 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	k_mutex_init(&mt.lock);
 	k_mutex_init(&mt_ws.lock);
 
+	ret = meshtastic_stats_init();
+	if (ret < 0) {
+		return ret;
+	}
+
 	mt.initialized = true;
-	mt.status.initialized = true;
 
 	ret = meshtastic_config_store_seed(cfg);
 	if (ret < 0) {
 		mt.initialized = false;
-		mt.status.initialized = false;
 		return ret;
 	}
 
@@ -294,7 +297,6 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	ret = meshtastic_settings_init();
 	if (ret < 0) {
 		mt.initialized = false;
-		mt.status.initialized = false;
 		return ret;
 	}
 #endif
@@ -302,21 +304,18 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	ret = meshtastic_config_store_apply_core();
 	if (ret < 0) {
 		mt.initialized = false;
-		mt.status.initialized = false;
 		return ret;
 	}
 
 	ret = meshtastic_settings_apply_all();
 	if (ret < 0) {
 		mt.initialized = false;
-		mt.status.initialized = false;
 		return ret;
 	}
 
 	ret = meshtastic_radio_init();
 	if (ret < 0) {
 		mt.initialized = false;
-		mt.status.initialized = false;
 		return ret;
 	}
 
@@ -519,8 +518,8 @@ int meshtastic_get_status(struct meshtastic_status *status)
 		return -EINVAL;
 	}
 
-	*status = mt.status;
 	status->initialized = mt.initialized;
+	status->ble_connected = mt.ble_connected;
 	status->node_id = mt.node_id;
 
 	return 0;

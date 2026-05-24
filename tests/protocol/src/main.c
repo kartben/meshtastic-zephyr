@@ -12,6 +12,7 @@
 #include "meshtastic_core.h"
 #include "meshtastic_packet.h"
 #include "meshtastic_router.h"
+#include "meshtastic_stats.h"
 
 #define TEST_NODE_ID  0x12345678U
 #define PEER_NODE_ID  0x87654321U
@@ -408,12 +409,11 @@ ZTEST(protocol_stack, test_send_text_uses_mock_lora_and_round_trips)
 {
 	struct meshtastic_packet decoded;
 	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
-	struct meshtastic_status before;
-	struct meshtastic_status after;
+	uint32_t before;
+	uint32_t after;
 	int ret;
 
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	before = meshtastic_stats.tx_packets;
 
 	ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST, "ping");
 	zassert_ok(ret, "meshtastic_send_text failed: %d", ret);
@@ -426,9 +426,8 @@ ZTEST(protocol_stack, test_send_text_uses_mock_lora_and_round_trips)
 	assert_payload(decoded.payload, decoded.payload_len, "ping", 4U);
 	zassert_equal(state.last_event.type, MESHTASTIC_EVENT_TX_DONE, "unexpected event");
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.tx_packets, before.tx_packets + 1U, "tx counter not incremented");
+	after = meshtastic_stats.tx_packets;
+	zassert_equal(after, before + 1U, "tx counter not incremented");
 }
 
 /* Verifies invalid send API arguments fail before reaching the LoRa driver. */
@@ -526,12 +525,14 @@ ZTEST(protocol_stack, test_send_packet_preserves_explicit_metadata)
 /* Verifies radio send errors emit TX_FAILED and update failure status instead of TX_DONE. */
 ZTEST(protocol_stack, test_radio_send_failure_emits_failed_event)
 {
-	struct meshtastic_status before;
-	struct meshtastic_status after;
+	uint32_t before_failures;
+	uint32_t before_packets;
+	uint32_t after_failures;
+	uint32_t after_packets;
 	int ret;
 
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	before_failures = meshtastic_stats.tx_failures;
+	before_packets = meshtastic_stats.tx_packets;
 
 	set_mock_send_result(-EIO);
 	ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST, "fail");
@@ -543,11 +544,10 @@ ZTEST(protocol_stack, test_radio_send_failure_emits_failed_event)
 		      "unexpected failure event");
 	zassert_equal(state.last_event.err, -EIO, "unexpected failure errno");
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.tx_failures, before.tx_failures + 1U,
-		      "tx failure counter not incremented");
-	zassert_equal(after.tx_packets, before.tx_packets, "failed TX should not count as sent");
+	after_failures = meshtastic_stats.tx_failures;
+	after_packets = meshtastic_stats.tx_packets;
+	zassert_equal(after_failures, before_failures + 1U, "tx failure counter not incremented");
+	zassert_equal(after_packets, before_packets, "failed TX should not count as sent");
 }
 
 /* Verifies decoded MeshPacket conversion preserves application payload and packet metadata. */
@@ -674,12 +674,11 @@ ZTEST(protocol_stack, test_mock_radio_receive_delivers_packet)
 {
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
+	uint32_t before;
+	uint32_t after;
 	int ret;
 
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	before = meshtastic_stats.rx_packets;
 
 	build_peer_wire_packet(TEST_NODE_ID, 0x1001U, 3U, "pong", wire, &wire_len);
 	inject_rx_frame(wire, wire_len, -42, 7);
@@ -694,30 +693,23 @@ ZTEST(protocol_stack, test_mock_radio_receive_delivers_packet)
 	zassert_equal(state.last_rx.snr, 7, "unexpected snr");
 	zassert_equal(state.last_event.type, MESHTASTIC_EVENT_PACKET_RECEIVED, "unexpected event");
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.rx_packets, before.rx_packets + 1U, "rx counter not incremented");
+	after = meshtastic_stats.rx_packets;
+	zassert_equal(after, before + 1U, "rx counter not incremented");
 }
 
 /* Verifies too-short LoRa frames are ignored before duplicate, decode, or delivery handling. */
 ZTEST(protocol_stack, test_too_short_rx_frame_is_ignored)
 {
 	uint8_t wire[MESHTASTIC_HDR_LEN - 1U] = {0};
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before_rx = meshtastic_stats.rx_packets;
+	uint32_t before_failures = meshtastic_stats.decode_failures;
 
 	inject_rx_frame(wire, sizeof(wire), -10, 1);
 	k_sleep(K_MSEC(100));
 
 	zassert_equal(state.recv_count, 0U, "short frame should not be delivered");
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.rx_packets, before.rx_packets, "short frame should not count as RX");
-	zassert_equal(after.decode_failures, before.decode_failures,
+	zassert_equal(meshtastic_stats.rx_packets, before_rx, "short frame should not count as RX");
+	zassert_equal(meshtastic_stats.decode_failures, before_failures,
 		      "short frame should not count as decode failure");
 }
 
@@ -727,12 +719,8 @@ ZTEST(protocol_stack, test_unknown_channel_hash_counts_decode_failure_without_de
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
 	struct meshtastic_wire_header *hdr;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before_rx = meshtastic_stats.rx_packets;
+	uint32_t before_failures = meshtastic_stats.decode_failures;
 
 	build_peer_wire_packet(TEST_NODE_ID, 0x5404U, 3U, "badch", wire, &wire_len);
 	hdr = (struct meshtastic_wire_header *)wire;
@@ -741,10 +729,8 @@ ZTEST(protocol_stack, test_unknown_channel_hash_counts_decode_failure_without_de
 	k_sleep(K_MSEC(100));
 
 	zassert_equal(state.recv_count, 0U, "undecodable packet should not be delivered");
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.rx_packets, before.rx_packets + 1U, "rx counter not incremented");
-	zassert_equal(after.decode_failures, before.decode_failures + 1U,
+	zassert_equal(meshtastic_stats.rx_packets, before_rx + 1U, "rx counter not incremented");
+	zassert_equal(meshtastic_stats.decode_failures, before_failures + 1U,
 		      "decode failure counter not incremented");
 }
 
@@ -768,12 +754,7 @@ ZTEST(protocol_stack, test_duplicate_packets_are_suppressed)
 {
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before = meshtastic_stats.duplicate_packets;
 
 	build_peer_wire_packet(TEST_NODE_ID, 0x2002U, 3U, "dupe", wire, &wire_len);
 	inject_rx_frame(wire, wire_len, -30, 5);
@@ -783,9 +764,7 @@ ZTEST(protocol_stack, test_duplicate_packets_are_suppressed)
 	zassert_equal(-EAGAIN, k_sem_take(&state.rx_sem, K_MSEC(100)),
 		      "duplicate unexpectedly delivered");
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.duplicate_packets, before.duplicate_packets + 1U,
+	zassert_equal(meshtastic_stats.duplicate_packets, before + 1U,
 		      "duplicate counter not incremented");
 	zassert_equal(state.recv_count, 1U, "expected single delivery");
 }
@@ -795,12 +774,7 @@ ZTEST(protocol_stack, test_duplicate_foreign_packets_do_not_relay_again)
 {
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before = meshtastic_stats.duplicate_packets;
 
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5606U, 3U, "relay-once", wire, &wire_len);
 	inject_rx_frame(wire, wire_len, -35, 4);
@@ -813,9 +787,7 @@ ZTEST(protocol_stack, test_duplicate_foreign_packets_do_not_relay_again)
 
 	assert_mock_send_count(0U);
 	zassert_equal(state.recv_count, 0U, "foreign packets should not be locally delivered");
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.duplicate_packets, before.duplicate_packets + 1U,
+	zassert_equal(meshtastic_stats.duplicate_packets, before + 1U,
 		      "duplicate counter not incremented");
 }
 
@@ -825,12 +797,7 @@ ZTEST(protocol_stack, test_foreign_unicast_is_relayed_with_decremented_hop_limit
 	struct meshtastic_wire_header hdr;
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before = meshtastic_stats.relayed_packets;
 
 	build_peer_wire_packet(OTHER_NODE_ID, 0x3003U, 3U, "relay", wire, &wire_len);
 	inject_rx_frame(wire, wire_len, -55, 2);
@@ -842,9 +809,7 @@ ZTEST(protocol_stack, test_foreign_unicast_is_relayed_with_decremented_hop_limit
 		      "relay hop limit not decremented");
 	zassert_equal(state.recv_count, 0U, "foreign unicast should not be delivered locally");
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.relayed_packets, before.relayed_packets + 1U,
+	zassert_equal(meshtastic_stats.relayed_packets, before + 1U,
 		      "relay counter not incremented");
 }
 
@@ -867,12 +832,7 @@ ZTEST(protocol_stack, test_rebroadcast_policy_can_suppress_foreign_relay)
 {
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
-	struct meshtastic_status before;
-	struct meshtastic_status after;
-	int ret;
-
-	ret = meshtastic_get_status(&before);
-	zassert_ok(ret, "status read failed: %d", ret);
+	uint32_t before = meshtastic_stats.relayed_packets;
 
 	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_NONE);
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5808U, 3U, "none", wire, &wire_len);
@@ -888,9 +848,7 @@ ZTEST(protocol_stack, test_rebroadcast_policy_can_suppress_foreign_relay)
 	k_sleep(K_MSEC(100));
 	assert_mock_send_count(0U);
 
-	ret = meshtastic_get_status(&after);
-	zassert_ok(ret, "status read failed: %d", ret);
-	zassert_equal(after.relayed_packets, before.relayed_packets,
+	zassert_equal(meshtastic_stats.relayed_packets, before,
 		      "relay counter should not change when policy suppresses relay");
 }
 

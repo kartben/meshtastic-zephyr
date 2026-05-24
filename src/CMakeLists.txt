@@ -43,6 +43,7 @@ if(CONFIG_MESHTASTIC)
     meshtastic_outbound.c
     meshtastic_router.c
     meshtastic_routing.c
+    meshtastic_stats.c
     meshtastic_settings_apply.c
   )
   zephyr_library_sources_ifdef(CONFIG_MESHTASTIC_SETTINGS meshtastic_settings.c)

@@ -3,6 +3,13 @@
 
 menu "Meshtastic core"
 
+config MESHTASTIC_STATS
+	bool "Meshtastic runtime statistics"
+	default y
+	select STATS
+	help
+	  Track Meshtastic TX/RX counters with Zephyr's stats subsystem.
+
 config MESHTASTIC_THREAD_STACK_SIZE
 	int "Processing thread stack size (bytes)"
 	default 8192 if MESHTASTIC_BLE
