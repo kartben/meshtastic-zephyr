@@ -127,8 +127,8 @@ the Zephyr . Commands marked *(optional)* are only present when their correspond
      - Description
    * - ``meshtastic status``
      - Show node ID, init/BLE state, TX/RX stats, channel, role
-   * - ``stats show meshtastic_comm``
-     - Show Zephyr stats counters for communication stack activity (optional, requires ``CONFIG_MESHTASTIC_COMM_STATS`` and Zephyr stats shell support)
+   * - ``stats show meshtastic``
+     - Show Zephyr stats counters for communication stack activity (optional, requires ``CONFIG_MESHTASTIC_STATS`` and Zephyr stats shell support)
    * - ``meshtastic channel list``
      - List the 8 channel slots
    * - ``meshtastic channel show <index>``

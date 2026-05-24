@@ -54,7 +54,7 @@ config MESHTASTIC_OUTBOUND_STACK_SIZE
 	help
 	  Stack for the thread that performs serialized LoRa transmits.
 
-config MESHTASTIC_COMM_STATS
+config MESHTASTIC_STATS
 	bool "Collect Meshtastic communication stack stats"
 	default y if STATS
 	depends on STATS
