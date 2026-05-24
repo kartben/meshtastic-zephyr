@@ -27,15 +27,6 @@ config MESHTASTIC_SAMPLE_GUI_LVGL
 	  Zephyr display. When disabled, or when no ready display is available
 	  at runtime, the sample uses a structured log renderer instead.
 
-config MESHTASTIC_SAMPLE_GUI_REFRESH_MS
-	int "Sample GUI refresh cadence in milliseconds"
-	range 50 5000
-	default 250
-	help
-	  Periodic refresh interval used while the sample waits between radio
-	  transmissions. This keeps status counters and any GUI backend up to
-	  date without pushing UI code into the sample entry point.
-
 endif
 
 endmenu

@@ -40,6 +40,8 @@ The sample-local GUI layer is enabled by default with
 (``CONFIG_MESHTASTIC_SAMPLE_GUI_LVGL=y`` and ``CONFIG_LVGL=y``), the sample
 renders a compact status/message view through LVGL. Otherwise it falls back to
 a structured log renderer while keeping the same Meshtastic-to-UI model split.
+GUI updates are driven directly by Meshtastic stack events rather than by a
+sample-local refresh cadence.
 
 Shell commands (TBC)
 ********************

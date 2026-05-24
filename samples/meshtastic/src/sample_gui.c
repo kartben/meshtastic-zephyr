@@ -3,7 +3,6 @@
  */
 
 #include <zephyr/meshtastic/meshtastic.h>
-#include <zephyr/sys/util.h>
 
 #include "sample_gui.h"
 #include "sample_gui_model.h"
@@ -41,29 +40,7 @@ int meshtastic_sample_gui_init(void)
 
 int meshtastic_sample_gui_process(k_timeout_t timeout)
 {
-	int32_t remaining_ms;
-	int ret;
-
-	remaining_ms = MAX(k_ticks_to_ms_floor32(timeout.ticks), 0);
-
-	while (true) {
-		ret = meshtastic_sample_gui_model_refresh_status(&gui_model);
-		if (ret < 0) {
-			return ret;
-		}
-
-		ret = meshtastic_sample_gui_renderer_process(&gui_model);
-		if (ret < 0) {
-			return ret;
-		}
-
-		if (remaining_ms <= 0) {
-			break;
-		}
-
-		k_sleep(K_MSEC(MIN(remaining_ms, CONFIG_MESHTASTIC_SAMPLE_GUI_REFRESH_MS)));
-		remaining_ms -= MIN(remaining_ms, CONFIG_MESHTASTIC_SAMPLE_GUI_REFRESH_MS);
-	}
+	k_sleep(timeout);
 
 	return 0;
 }
@@ -92,7 +69,6 @@ void meshtastic_sample_gui_handle_event(const struct meshtastic_event *event)
 		break;
 	}
 
-	if (meshtastic_sample_gui_model_refresh_status(&gui_model) == 0) {
-		(void)meshtastic_sample_gui_renderer_process(&gui_model);
-	}
+	(void)meshtastic_sample_gui_model_refresh_status(&gui_model);
+	(void)meshtastic_sample_gui_renderer_process(&gui_model);
 }
