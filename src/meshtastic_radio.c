@@ -11,7 +11,7 @@
 #include <zephyr/drivers/lora.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
-#if defined(CONFIG_MESHTASTIC_STACK_STATS)
+#if defined(CONFIG_MESHTASTIC_COMM_STATS)
 #include <zephyr/stats/stats.h>
 #endif
 #include <zephyr/sys/byteorder.h>
@@ -44,43 +44,44 @@ static struct lora_modem_config mt_lora_cfg = {
 static K_THREAD_STACK_DEFINE(mt_stack, CONFIG_MESHTASTIC_THREAD_STACK_SIZE);
 static struct k_thread mt_thread;
 
-#if defined(CONFIG_MESHTASTIC_STACK_STATS)
-STATS_SECT_START(meshtastic_stack_stats)
-STATS_SECT_ENTRY(stack_size)
-STATS_SECT_ENTRY(stack_unused)
-STATS_SECT_ENTRY(stack_used)
-STATS_SECT_ENTRY(stack_used_max)
+#if defined(CONFIG_MESHTASTIC_COMM_STATS)
+STATS_SECT_START(meshtastic_comm_stats)
+STATS_SECT_ENTRY(tx_packets)
+STATS_SECT_ENTRY(tx_failures)
+STATS_SECT_ENTRY(rx_packets)
+STATS_SECT_ENTRY(relayed_packets)
+STATS_SECT_ENTRY(duplicate_packets)
+STATS_SECT_ENTRY(decode_failures)
+STATS_SECT_ENTRY(rx_dropped)
+STATS_SECT_ENTRY(rx_rearm_failures)
+STATS_SECT_ENTRY(packet_loss)
 STATS_SECT_END;
 
-STATS_NAME_START(meshtastic_stack_stats)
-STATS_NAME(meshtastic_stack_stats, stack_size)
-STATS_NAME(meshtastic_stack_stats, stack_unused)
-STATS_NAME(meshtastic_stack_stats, stack_used)
-STATS_NAME(meshtastic_stack_stats, stack_used_max)
-STATS_NAME_END(meshtastic_stack_stats);
+STATS_NAME_START(meshtastic_comm_stats)
+STATS_NAME(meshtastic_comm_stats, tx_packets)
+STATS_NAME(meshtastic_comm_stats, tx_failures)
+STATS_NAME(meshtastic_comm_stats, rx_packets)
+STATS_NAME(meshtastic_comm_stats, relayed_packets)
+STATS_NAME(meshtastic_comm_stats, duplicate_packets)
+STATS_NAME(meshtastic_comm_stats, decode_failures)
+STATS_NAME(meshtastic_comm_stats, rx_dropped)
+STATS_NAME(meshtastic_comm_stats, rx_rearm_failures)
+STATS_NAME(meshtastic_comm_stats, packet_loss)
+STATS_NAME_END(meshtastic_comm_stats);
 
-STATS_SECT_DECL(meshtastic_stack_stats) meshtastic_stack_stats;
+STATS_SECT_DECL(meshtastic_comm_stats) meshtastic_comm_stats;
 
-static void mt_collect_stack_stats(void)
+static void mt_collect_comm_stats(void)
 {
-	size_t unused = 0U;
-	uint32_t stack_size = K_THREAD_STACK_SIZEOF(mt_stack);
-	uint32_t stack_used;
-	int ret;
-
-	ret = k_thread_stack_space_get(&mt_thread, &unused);
-	if (ret < 0) {
-		return;
-	}
-
-	stack_used = (stack_size > (uint32_t)unused) ? (stack_size - (uint32_t)unused) : 0U;
-
-	meshtastic_stack_stats.s.stack_size = stack_size;
-	meshtastic_stack_stats.s.stack_unused = (uint32_t)unused;
-	meshtastic_stack_stats.s.stack_used = stack_used;
-	if (stack_used > meshtastic_stack_stats.s.stack_used_max) {
-		meshtastic_stack_stats.s.stack_used_max = stack_used;
-	}
+	meshtastic_comm_stats.s.tx_packets = mt.status.tx_packets;
+	meshtastic_comm_stats.s.tx_failures = mt.status.tx_failures;
+	meshtastic_comm_stats.s.rx_packets = mt.status.rx_packets;
+	meshtastic_comm_stats.s.relayed_packets = mt.status.relayed_packets;
+	meshtastic_comm_stats.s.duplicate_packets = mt.status.duplicate_packets;
+	meshtastic_comm_stats.s.decode_failures = mt.status.decode_failures;
+	meshtastic_comm_stats.s.rx_dropped = mt.status.rx_dropped;
+	meshtastic_comm_stats.s.rx_rearm_failures = mt.status.rx_rearm_failures;
+	meshtastic_comm_stats.s.packet_loss = mt.status.tx_failures + mt.status.rx_dropped;
 }
 #endif
 
@@ -256,8 +257,8 @@ static void mt_thread_fn(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	while (true) {
-#if defined(CONFIG_MESHTASTIC_STACK_STATS)
-		mt_collect_stack_stats();
+#if defined(CONFIG_MESHTASTIC_COMM_STATS)
+		mt_collect_comm_stats();
 #endif
 		ret = k_msgq_get(&mt_rx_msgq, &slot, K_MSEC(CONFIG_MESHTASTIC_RX_REARM_RETRY_MS));
 		if (ret == 0) {
@@ -301,11 +302,11 @@ int meshtastic_radio_init(void)
 	k_thread_create(&mt_thread, mt_stack, K_THREAD_STACK_SIZEOF(mt_stack), mt_thread_fn, NULL,
 			NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(&mt_thread, "meshtastic");
-#if defined(CONFIG_MESHTASTIC_STACK_STATS)
-	ret = STATS_INIT_AND_REG(meshtastic_stack_stats, STATS_SIZE_32, "meshtastic_stack",
-				 &meshtastic_stack_stats);
+#if defined(CONFIG_MESHTASTIC_COMM_STATS)
+	ret = STATS_INIT_AND_REG(meshtastic_comm_stats, STATS_SIZE_32, "meshtastic_comm",
+				 &meshtastic_comm_stats);
 	if (ret < 0) {
-		LOG_WRN("Failed to register meshtastic stack stats (%d)", ret);
+		LOG_WRN("Failed to register meshtastic communication stats (%d)", ret);
 	}
 #endif
 
