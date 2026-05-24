@@ -11,6 +11,9 @@
 #include <zephyr/drivers/lora.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
+#if defined(CONFIG_MESHTASTIC_STACK_STATS)
+#include <zephyr/stats/stats.h>
+#endif
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 
@@ -40,6 +43,46 @@ static struct lora_modem_config mt_lora_cfg = {
 
 static K_THREAD_STACK_DEFINE(mt_stack, CONFIG_MESHTASTIC_THREAD_STACK_SIZE);
 static struct k_thread mt_thread;
+
+#if defined(CONFIG_MESHTASTIC_STACK_STATS)
+STATS_SECT_START(meshtastic_stack_stats)
+STATS_SECT_ENTRY(stack_size)
+STATS_SECT_ENTRY(stack_unused)
+STATS_SECT_ENTRY(stack_used)
+STATS_SECT_ENTRY(stack_used_max)
+STATS_SECT_END;
+
+STATS_NAME_START(meshtastic_stack_stats)
+STATS_NAME(meshtastic_stack_stats, stack_size)
+STATS_NAME(meshtastic_stack_stats, stack_unused)
+STATS_NAME(meshtastic_stack_stats, stack_used)
+STATS_NAME(meshtastic_stack_stats, stack_used_max)
+STATS_NAME_END(meshtastic_stack_stats);
+
+STATS_SECT_DECL(meshtastic_stack_stats) meshtastic_stack_stats;
+
+static void mt_collect_stack_stats(void)
+{
+	size_t unused = 0U;
+	uint32_t stack_size = K_THREAD_STACK_SIZEOF(mt_stack);
+	uint32_t stack_used;
+	int ret;
+
+	ret = k_thread_stack_space_get(&mt_thread, &unused);
+	if (ret < 0) {
+		return;
+	}
+
+	stack_used = (stack_size > (uint32_t)unused) ? (stack_size - (uint32_t)unused) : 0U;
+
+	meshtastic_stack_stats.s.stack_size = stack_size;
+	meshtastic_stack_stats.s.stack_unused = (uint32_t)unused;
+	meshtastic_stack_stats.s.stack_used = stack_used;
+	if (stack_used > meshtastic_stack_stats.s.stack_used_max) {
+		meshtastic_stack_stats.s.stack_used_max = stack_used;
+	}
+}
+#endif
 
 /*
  * Serialises radio state transitions.  Continuous async RX runs in the LoRa
@@ -213,6 +256,9 @@ static void mt_thread_fn(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	while (true) {
+#if defined(CONFIG_MESHTASTIC_STACK_STATS)
+		mt_collect_stack_stats();
+#endif
 		ret = k_msgq_get(&mt_rx_msgq, &slot, K_MSEC(CONFIG_MESHTASTIC_RX_REARM_RETRY_MS));
 		if (ret == 0) {
 			meshtastic_router_process_lora_rx(slot.buf, slot.len, slot.rssi, slot.snr);
@@ -255,6 +301,13 @@ int meshtastic_radio_init(void)
 	k_thread_create(&mt_thread, mt_stack, K_THREAD_STACK_SIZEOF(mt_stack), mt_thread_fn, NULL,
 			NULL, NULL, CONFIG_MESHTASTIC_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(&mt_thread, "meshtastic");
+#if defined(CONFIG_MESHTASTIC_STACK_STATS)
+	ret = STATS_INIT_AND_REG(meshtastic_stack_stats, STATS_SIZE_32, "meshtastic_stack",
+				 &meshtastic_stack_stats);
+	if (ret < 0) {
+		LOG_WRN("Failed to register meshtastic stack stats (%d)", ret);
+	}
+#endif
 
 	/*
 	 * Arm continuous async RX.  A failure here is non-fatal: TX still

@@ -54,6 +54,15 @@ config MESHTASTIC_OUTBOUND_STACK_SIZE
 	help
 	  Stack for the thread that performs serialized LoRa transmits.
 
+config MESHTASTIC_STACK_STATS
+	bool "Collect Meshtastic processing-thread stack stats"
+	default y if STATS
+	depends on STATS && THREAD_STACK_INFO && INIT_STACKS
+	help
+	  Register Meshtastic stack counters in Zephyr's stats subsystem and
+	  track current/max stack usage for the main Meshtastic processing
+	  thread.
+
 config MESHTASTIC_PACKET_HEXDUMP
 	bool "Hex dump LoRa wire packets at DBG log level"
 	default MESHTASTIC_LOG_LEVEL_DBG
