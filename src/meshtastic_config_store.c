@@ -171,8 +171,12 @@ static int index_for_module_name(const char *name)
 	return -ENOENT;
 }
 
-/* Map the configured spreading factor to the closest Meshtastic modem
- * preset (all BW 250 kHz presets; the stack always runs BW 250 / CR 4/5).
+/* Map the configured spreading factor to the official Meshtastic modem
+ * preset. SF 7-11 map exactly: per the reference firmware's
+ * modemPresetToParams(), SHORT_FAST through LONG_FAST all run BW 250 kHz /
+ * CR 4/5, which is precisely what this stack transmits. SF 12 is the one
+ * gap (LONG_SLOW is BW 125 / CR 4/8) and is handled by the caller with
+ * use_preset = false.
  */
 static meshtastic_Config_LoRaConfig_ModemPreset modem_preset_from_sf(void)
 {
@@ -365,8 +369,18 @@ static void seed_config_defaults(const struct meshtastic_config *cfg)
 			: meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT;
 
 	idx = index_for_config_tag(meshtastic_Config_lora_tag);
-	store.configs[idx].payload_variant.lora.use_preset = true;
-	store.configs[idx].payload_variant.lora.modem_preset = modem_preset_from_sf();
+	if (mt.spread_factor == 12U) {
+		/* SF 12 at BW 250 kHz matches no official preset: report the
+		 * explicit parameters instead of lying about the preset.
+		 */
+		store.configs[idx].payload_variant.lora.use_preset = false;
+		store.configs[idx].payload_variant.lora.spread_factor = 12U;
+		store.configs[idx].payload_variant.lora.bandwidth = 250U;
+		store.configs[idx].payload_variant.lora.coding_rate = 5U;
+	} else {
+		store.configs[idx].payload_variant.lora.use_preset = true;
+		store.configs[idx].payload_variant.lora.modem_preset = modem_preset_from_sf();
+	}
 	store.configs[idx].payload_variant.lora.region = lora_region_from_frequency(cfg->frequency);
 	store.configs[idx].payload_variant.lora.hop_limit = mt.hop_limit;
 	store.configs[idx].payload_variant.lora.tx_enabled = true;
