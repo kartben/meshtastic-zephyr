@@ -3,4 +3,21 @@
 # Copyright (c) 2026 The Zephyr Project Contributors
 # SPDX-License-Identifier: GPL-3.0
 
+config MESHTASTIC_SAMPLE_FREQUENCY
+	int "LoRa carrier frequency (Hz)"
+	default 0
+	help
+	  Carrier frequency in Hz, e.g. 906875000 for the default US
+	  LongFast slot or 913125000 for US MediumFast slot 45.
+	  0 selects the EU LongFast default (869.525 MHz).
+
+config MESHTASTIC_SAMPLE_SPREAD_FACTOR
+	int "LoRa spreading factor"
+	range 0 12
+	default 0
+	help
+	  Spreading factor 7-12. Together with the fixed BW 250 kHz this
+	  selects the Meshtastic modem preset (11 = LongFast,
+	  9 = MediumFast). 0 selects the stack default (SF 11).
+
 source "Kconfig.zephyr"

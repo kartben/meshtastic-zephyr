@@ -74,7 +74,10 @@ int main(void)
 		.frequency = 865100000U,
 		.tx_power = CONFIG_MESHTASTIC_TX_POWER,
 #else
-		.frequency = MESHTASTIC_FREQ_EU,
+		.frequency = (CONFIG_MESHTASTIC_SAMPLE_FREQUENCY != 0)
+				     ? CONFIG_MESHTASTIC_SAMPLE_FREQUENCY
+				     : MESHTASTIC_FREQ_EU,
+		.spread_factor = CONFIG_MESHTASTIC_SAMPLE_SPREAD_FACTOR,
 		/* hop_limit and tx_power: 0 → use Kconfig defaults */
 #endif
 	};
