@@ -20,4 +20,17 @@ config MESHTASTIC_SAMPLE_SPREAD_FACTOR
 	  selects the Meshtastic modem preset (11 = LongFast,
 	  9 = MediumFast). 0 selects the stack default (SF 11).
 
+config MESHTASTIC_SAMPLE_DEMO_BROADCAST
+	bool "Periodically broadcast a demo text message"
+	default y
+	help
+	  Broadcast "Hello from <board>!" on the primary channel at the
+	  interval below. Handy as a first-contact smoke test; disable it
+	  when the sample is used as day-to-day firmware on a real mesh.
+
+config MESHTASTIC_SAMPLE_DEMO_BROADCAST_INTERVAL_SEC
+	int "Demo broadcast interval (seconds)"
+	depends on MESHTASTIC_SAMPLE_DEMO_BROADCAST
+	default 300
+
 source "Kconfig.zephyr"

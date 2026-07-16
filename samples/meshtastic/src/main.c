@@ -104,9 +104,9 @@ int main(void)
 	 * mesh automatically by the subsystem; see CONFIG_MESHTASTIC_NODEINFO.
 	 */
 
+#if defined(CONFIG_MESHTASTIC_SAMPLE_DEMO_BROADCAST)
 	/* Periodically broadcast a text message. */
 	while (true) {
-		// hello from CONFIG_BOARD_TARGET
 		ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST,
 					   "Hello from " CONFIG_BOARD_TARGET "!");
 		if (ret < 0) {
@@ -115,8 +115,11 @@ int main(void)
 			LOG_INF("Broadcast sent");
 		}
 
-		k_sleep(K_SECONDS(300));
+		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_SAMPLE_DEMO_BROADCAST_INTERVAL_SEC));
 	}
+#else
+	k_sleep(K_FOREVER);
+#endif
 
 	return 0;
 }
