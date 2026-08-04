@@ -460,6 +460,28 @@ static void copy_last_tx(uint8_t *wire, uint32_t *wire_len)
 	k_mutex_unlock(&mock_lora.lock);
 }
 
+/* Builds a peer packet that asks this node to acknowledge it. */
+static void build_peer_want_ack_wire(uint32_t id, const char *text, uint8_t *wire,
+				     uint32_t *wire_len)
+{
+	struct meshtastic_packet packet = {
+		.from = PEER_NODE_ID,
+		.to = TEST_NODE_ID,
+		.id = id,
+		.portnum = MESHTASTIC_PORT_TEXT_MESSAGE,
+		.payload = (const uint8_t *)text,
+		.payload_len = strlen(text),
+		.hop_limit = 3U,
+		.hop_start = 3U,
+		.channel_index = meshtastic_channels_primary_index(),
+		.want_ack = true,
+	};
+	int ret;
+
+	ret = meshtastic_build_wire_packet(&packet, wire, wire_len);
+	zassert_ok(ret, "meshtastic_build_wire_packet failed: %d", ret);
+}
+
 /* Builds the ROUTING reply a peer sends back for @p request_id. */
 static void build_routing_reply_wire(uint32_t id, uint32_t request_id,
 				     meshtastic_Routing_Error error, uint8_t *wire,
@@ -1188,4 +1210,25 @@ ZTEST(protocol_stack, test_unacknowledged_packet_is_retransmitted_then_reported)
 	zassert_equal(state.last_ack_err, -ETIMEDOUT, "expected -ETIMEDOUT after retries");
 	zassert_equal(state.last_ack_packet.id, id, "failure reported the wrong packet id");
 	zassert_equal(meshtastic_reliable_pending(), 0U, "tracking entry was not released");
+}
+
+/*
+ * Verifies a duplicate of a packet that wants an acknowledgement is acknowledged again.
+ * Without this the sender's retry is wasted whenever it was the acknowledgement that was lost.
+ */
+ZTEST(protocol_stack, test_duplicate_want_ack_packet_is_acknowledged_again)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+
+	build_peer_want_ack_wire(0x0DEF0001U, "hi", wire, &wire_len);
+
+	inject_rx_frame(wire, wire_len, -20, 5);
+	wait_for_send_count(1U, 1000);
+	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for delivery");
+
+	/* The same frame again: suppressed as a duplicate, but still acknowledged. */
+	inject_rx_frame(wire, wire_len, -20, 5);
+	wait_for_send_count(2U, 1000);
+	zassert_equal(state.recv_count, 1U, "duplicate must not be delivered twice");
 }
