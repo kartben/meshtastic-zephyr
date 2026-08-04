@@ -28,6 +28,7 @@
 #include "meshtastic_core.h"
 #include "meshtastic_outbound.h"
 #include "meshtastic_packet.h"
+#include "meshtastic_reliable.h"
 
 #include "meshtastic_settings.h"
 #include "meshtastic_gnss.h"
@@ -270,6 +271,7 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	memset(mt.dup_cache, 0, sizeof(mt.dup_cache));
 	memset(&mt.status, 0, sizeof(mt.status));
 	mt.status.node_id = mt.node_id;
+	meshtastic_reliable_reset();
 
 	psa_st = psa_crypto_init();
 	if (psa_st != PSA_SUCCESS) {
@@ -464,7 +466,12 @@ int meshtastic_send_packet(const struct meshtastic_packet *packet, k_timeout_t w
 		ret = meshtastic_radio_send_wire_wait(wire, pkt_len, wait);
 	}
 
-	return send_packet_complete(&local, wire, pkt_len, ret, K_TIMEOUT_EQ(wait, K_FOREVER));
+	ret = send_packet_complete(&local, wire, pkt_len, ret, K_TIMEOUT_EQ(wait, K_FOREVER));
+	if (ret == 0) {
+		meshtastic_reliable_track(&local, wire, pkt_len);
+	}
+
+	return ret;
 }
 
 int meshtastic_send_data(uint32_t dest, uint32_t portnum, const uint8_t *payload,

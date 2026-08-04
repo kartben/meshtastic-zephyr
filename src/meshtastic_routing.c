@@ -10,6 +10,7 @@
 #include "meshtastic_channels.h"
 #include "meshtastic_core.h"
 #include "meshtastic_packet.h"
+#include "meshtastic_reliable.h"
 #include "meshtastic_router.h"
 
 #include <zephyr/logging/log.h>
@@ -118,6 +119,13 @@ void meshtastic_routing_on_decoded(const struct meshtastic_packet *packet)
 	if (packet == NULL || !packet_is_to_us(packet) || packet->from == mt.node_id) {
 		return;
 	}
+
+	/*
+	 * Settle any packet of ours this one acknowledges. This is not an
+	 * either/or with replying below: an acknowledgement for a direct
+	 * message may itself ask to be acknowledged.
+	 */
+	(void)meshtastic_reliable_on_routing(packet);
 
 	if (packet->want_ack && packet->to == mt.node_id) {
 		(void)routing_send_ack(packet);

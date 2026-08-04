@@ -8,9 +8,12 @@
 
 #include <zephyr/meshtastic/meshtastic.h>
 
+#include <pb_encode.h>
+
 #include "meshtastic_channels.h"
 #include "meshtastic_core.h"
 #include "meshtastic_packet.h"
+#include "meshtastic_reliable.h"
 #include "meshtastic_router.h"
 
 #define TEST_NODE_ID  0x12345678U
@@ -140,6 +143,16 @@ struct test_state {
 	struct meshtastic_event last_event;
 	uint32_t recv_count;
 	uint32_t event_count;
+	/*
+	 * Delivery outcomes are tracked separately: the ROUTING packet that
+	 * carries an acknowledgement also raises a PACKET_RECEIVED event, which
+	 * would otherwise overwrite last_event before the test can read it.
+	 */
+	struct k_sem ack_sem;
+	struct meshtastic_packet last_ack_packet;
+	enum meshtastic_event_type last_ack_type;
+	int last_ack_err;
+	uint32_t ack_event_count;
 };
 
 static struct test_state state;
@@ -155,8 +168,13 @@ static void reset_callbacks_state(void)
 	state.last_event_payload_len = 0U;
 	state.recv_count = 0U;
 	state.event_count = 0U;
+	memset(&state.last_ack_packet, 0, sizeof(state.last_ack_packet));
+	state.last_ack_type = MESHTASTIC_EVENT_PACKET_RECEIVED;
+	state.last_ack_err = 0;
+	state.ack_event_count = 0U;
 	k_sem_reset(&state.rx_sem);
 	k_sem_reset(&state.tx_sem);
+	k_sem_reset(&state.ack_sem);
 }
 
 static void reset_mock_lora(void)
@@ -220,6 +238,16 @@ static void on_event(const struct meshtastic_event *event, void *user_data)
 	if (event->type == MESHTASTIC_EVENT_TX_DONE || event->type == MESHTASTIC_EVENT_TX_FAILED) {
 		k_sem_give(&state.tx_sem);
 	}
+	if (event->type == MESHTASTIC_EVENT_TX_ACKED || event->type == MESHTASTIC_EVENT_TX_NO_ACK) {
+		state.last_ack_type = event->type;
+		state.last_ack_err = event->err;
+		if (event->packet != NULL) {
+			state.last_ack_packet = *event->packet;
+			state.last_ack_packet.payload = NULL;
+		}
+		state.ack_event_count++;
+		k_sem_give(&state.ack_sem);
+	}
 }
 
 static void *protocol_suite_setup(void)
@@ -236,6 +264,7 @@ static void *protocol_suite_setup(void)
 
 	k_sem_init(&state.rx_sem, 0, 1);
 	k_sem_init(&state.tx_sem, 0, 1);
+	k_sem_init(&state.ack_sem, 0, 1);
 
 	zassert_true(device_is_ready(lora_dev), "mock lora device not ready");
 
@@ -258,6 +287,8 @@ static void protocol_before(void *fixture)
 	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_ALL);
 	memset(mt.dup_cache, 0, sizeof(mt.dup_cache));
 	mt.dup_head = 0U;
+	/* Leftover entries would retransmit into the next test's send counts. */
+	meshtastic_reliable_reset();
 	reset_mock_lora();
 	reset_callbacks_state();
 }
@@ -399,6 +430,92 @@ static void inject_rx_frame(const uint8_t *wire, uint32_t wire_len, int16_t rssi
 
 	memcpy(frame, wire, wire_len);
 	cb(lora_dev, frame, wire_len, rssi, snr, user_data);
+}
+
+static void wait_for_send_count(uint32_t expected, int timeout_ms)
+{
+	int64_t deadline = k_uptime_get() + timeout_ms;
+	uint32_t count = 0U;
+
+	while (k_uptime_get() <= deadline) {
+		k_mutex_lock(&mock_lora.lock, K_FOREVER);
+		count = mock_lora.send_count;
+		k_mutex_unlock(&mock_lora.lock);
+
+		if (count >= expected) {
+			return;
+		}
+
+		k_sleep(K_MSEC(10));
+	}
+
+	zassert_unreachable("timed out waiting for %u lora_send calls (saw %u)", expected, count);
+}
+
+static void copy_last_tx(uint8_t *wire, uint32_t *wire_len)
+{
+	k_mutex_lock(&mock_lora.lock, K_FOREVER);
+	*wire_len = mock_lora.last_tx_len;
+	memcpy(wire, mock_lora.last_tx, mock_lora.last_tx_len);
+	k_mutex_unlock(&mock_lora.lock);
+}
+
+/* Builds the ROUTING reply a peer sends back for @p request_id. */
+static void build_routing_reply_wire(uint32_t id, uint32_t request_id,
+				     meshtastic_Routing_Error error, uint8_t *wire,
+				     uint32_t *wire_len)
+{
+	meshtastic_Routing routing = meshtastic_Routing_init_zero;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	pb_ostream_t stream;
+	struct meshtastic_packet packet = {
+		.from = PEER_NODE_ID,
+		.to = TEST_NODE_ID,
+		.id = id,
+		.portnum = MESHTASTIC_PORT_ROUTING,
+		.request_id = request_id,
+		.hop_limit = 3U,
+		.hop_start = 3U,
+		.channel_index = meshtastic_channels_primary_index(),
+	};
+	int ret;
+
+	routing.which_variant = meshtastic_Routing_error_reason_tag;
+	routing.error_reason = error;
+
+	stream = pb_ostream_from_buffer(payload, sizeof(payload));
+	zassert_true(pb_encode(&stream, meshtastic_Routing_fields, &routing),
+		     "routing encode failed");
+
+	packet.payload = payload;
+	packet.payload_len = stream.bytes_written;
+
+	ret = meshtastic_build_wire_packet(&packet, wire, wire_len);
+	zassert_ok(ret, "meshtastic_build_wire_packet failed: %d", ret);
+}
+
+/* Sends a unicast packet that asks for an acknowledgement; returns its packet ID. */
+static uint32_t send_want_ack_unicast(const char *text)
+{
+	struct meshtastic_packet packet = {
+		.to = PEER_NODE_ID,
+		.portnum = MESHTASTIC_PORT_TEXT_MESSAGE,
+		.payload = (const uint8_t *)text,
+		.payload_len = strlen(text),
+		.want_ack = true,
+	};
+	struct meshtastic_wire_header hdr;
+	int ret;
+
+	ret = meshtastic_send_packet(&packet, K_FOREVER);
+	zassert_ok(ret, "meshtastic_send_packet failed: %d", ret);
+	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for tx event");
+
+	copy_last_tx_header(&hdr);
+	zassert_true((hdr.flags & MESHTASTIC_FLAGS_WANT_ACK) != 0U,
+		     "want_ack flag missing from wire header");
+
+	return sys_le32_to_cpu(hdr.id);
 }
 
 ZTEST_SUITE(protocol_stack, NULL, protocol_suite_setup, protocol_before, NULL, NULL);
@@ -978,4 +1095,97 @@ ZTEST(protocol_stack, test_duplicate_downlink_returns_ealready)
 	assert_mock_send_count(0U);
 	zassert_equal(state.recv_count, 0U, "duplicate downlink should not be delivered");
 	zassert_equal(state.event_count, 0U, "duplicate downlink should not emit events");
+}
+
+/* Verifies a unicast want_ack send is tracked and settled by a matching ROUTING acknowledgement. */
+ZTEST(protocol_stack, test_want_ack_unicast_is_settled_by_routing_ack)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	uint32_t id;
+
+	id = send_want_ack_unicast("dm");
+	zassert_equal(meshtastic_reliable_pending(), 1U, "packet was not tracked");
+
+	build_routing_reply_wire(0x0AC00001U, id, meshtastic_Routing_Error_NONE, wire, &wire_len);
+	inject_rx_frame(wire, wire_len, -20, 5);
+
+	zassert_ok(k_sem_take(&state.ack_sem, K_SECONDS(1)), "timed out waiting for ack event");
+	zassert_equal(state.last_ack_type, MESHTASTIC_EVENT_TX_ACKED, "expected TX_ACKED");
+	zassert_ok(state.last_ack_err, "unexpected error on acknowledged packet");
+	zassert_equal(state.last_ack_packet.id, id, "ack reported the wrong packet id");
+	zassert_equal(state.last_ack_packet.to, PEER_NODE_ID, "ack reported the wrong destination");
+	zassert_equal(meshtastic_reliable_pending(), 0U, "tracking entry was not released");
+}
+
+/* Verifies broadcasts are never tracked, since no node acknowledges them. */
+ZTEST(protocol_stack, test_want_ack_broadcast_is_not_tracked)
+{
+	struct meshtastic_packet packet = {
+		.to = MESHTASTIC_NODE_BROADCAST,
+		.portnum = MESHTASTIC_PORT_TEXT_MESSAGE,
+		.payload = (const uint8_t *)"all",
+		.payload_len = 3U,
+		.want_ack = true,
+	};
+	int ret;
+
+	ret = meshtastic_send_packet(&packet, K_FOREVER);
+	zassert_ok(ret, "meshtastic_send_packet failed: %d", ret);
+	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for tx event");
+
+	zassert_equal(meshtastic_reliable_pending(), 0U, "broadcast should not be tracked");
+}
+
+/* Verifies a routing error settles the packet as undelivered rather than acknowledged. */
+ZTEST(protocol_stack, test_routing_error_reports_delivery_failure)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	uint32_t id;
+
+	id = send_want_ack_unicast("dm");
+
+	build_routing_reply_wire(0x0AC00002U, id, meshtastic_Routing_Error_NO_ROUTE, wire,
+				 &wire_len);
+	inject_rx_frame(wire, wire_len, -20, 5);
+
+	zassert_ok(k_sem_take(&state.ack_sem, K_SECONDS(1)), "timed out waiting for ack event");
+	zassert_equal(state.last_ack_type, MESHTASTIC_EVENT_TX_NO_ACK, "expected TX_NO_ACK");
+	zassert_equal(state.last_ack_err, -EHOSTUNREACH,
+		      "expected -EHOSTUNREACH for routing error");
+	zassert_equal(state.last_ack_packet.id, id, "failure reported the wrong packet id");
+	zassert_equal(meshtastic_reliable_pending(), 0U, "tracking entry was not released");
+}
+
+/* Verifies an unanswered packet is retransmitted byte-for-byte, then reported as undelivered. */
+ZTEST(protocol_stack, test_unacknowledged_packet_is_retransmitted_then_reported)
+{
+	uint8_t first[MESHTASTIC_PKT_MAX];
+	uint8_t retry[MESHTASTIC_PKT_MAX];
+	uint32_t first_len;
+	uint32_t retry_len;
+	uint32_t id;
+
+	id = send_want_ack_unicast("retry");
+	assert_mock_send_count(1U);
+	copy_last_tx(first, &first_len);
+
+	/* The test build configures one retransmission, roughly one second out. */
+	wait_for_send_count(2U, 3000);
+	copy_last_tx(retry, &retry_len);
+
+	/*
+	 * The retry must reuse the original packet ID and frame: that is what
+	 * lets the destination recognise it as a duplicate of a message it may
+	 * already have delivered.
+	 */
+	zassert_equal(retry_len, first_len, "retransmission changed the frame length");
+	zassert_mem_equal(retry, first, first_len, "retransmission altered the frame");
+
+	zassert_ok(k_sem_take(&state.ack_sem, K_SECONDS(5)), "timed out waiting for no-ack event");
+	zassert_equal(state.last_ack_type, MESHTASTIC_EVENT_TX_NO_ACK, "expected TX_NO_ACK");
+	zassert_equal(state.last_ack_err, -ETIMEDOUT, "expected -ETIMEDOUT after retries");
+	zassert_equal(state.last_ack_packet.id, id, "failure reported the wrong packet id");
+	zassert_equal(meshtastic_reliable_pending(), 0U, "tracking entry was not released");
 }

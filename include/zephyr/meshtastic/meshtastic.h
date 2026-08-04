@@ -124,6 +124,23 @@ enum meshtastic_event_type {
 	MESHTASTIC_EVENT_GNSS_FIX,
 	/** Device metrics collection failed partially or completely. */
 	MESHTASTIC_EVENT_METRICS_ERROR,
+	/**
+	 * A packet sent with @c want_ack reached its destination.
+	 *
+	 * @p event.packet carries the @c to, @c id and @c portnum of the
+	 * original packet so it can be matched against the send; the payload is
+	 * not retained. Requires @kconfig{CONFIG_MESHTASTIC_RELIABLE}.
+	 */
+	MESHTASTIC_EVENT_TX_ACKED,
+	/**
+	 * A packet sent with @c want_ack was never acknowledged.
+	 *
+	 * @p event.err is @c -ETIMEDOUT when every retransmission went
+	 * unanswered, or @c -EHOSTUNREACH when the mesh returned an explicit
+	 * routing error. @p event.packet is set as for
+	 * @ref MESHTASTIC_EVENT_TX_ACKED.
+	 */
+	MESHTASTIC_EVENT_TX_NO_ACK,
 };
 
 /**
@@ -169,7 +186,15 @@ struct meshtastic_packet {
 	uint8_t next_hop;
 	/** Last byte of relay node. */
 	uint8_t relay_node;
-	/** Packet requests an acknowledgement. */
+	/**
+	 * Packet requests an acknowledgement.
+	 *
+	 * On a unicast send with @kconfig{CONFIG_MESHTASTIC_RELIABLE} the stack
+	 * retransmits the packet until the destination acknowledges it, then
+	 * reports @ref MESHTASTIC_EVENT_TX_ACKED or
+	 * @ref MESHTASTIC_EVENT_TX_NO_ACK. Ignored for broadcasts, which are
+	 * never acknowledged.
+	 */
 	bool want_ack;
 	/** Packet was marked as having passed via MQTT. */
 	bool via_mqtt;

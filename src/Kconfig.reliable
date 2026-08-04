@@ -1,0 +1,59 @@
+# Copyright (c) 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: GPL-3.0
+
+menuconfig MESHTASTIC_RELIABLE
+	bool "Reliable delivery (acknowledgement tracking and retransmission)"
+	default y
+	help
+	  Track locally originated packets that ask for an acknowledgement and
+	  retransmit them until the destination replies with a ROUTING
+	  acknowledgement.  The outcome is reported through the
+	  MESHTASTIC_EVENT_TX_ACKED and MESHTASTIC_EVENT_TX_NO_ACK stack
+	  events, so an application (or the phone app) can tell whether a
+	  direct message was delivered.
+
+	  Only unicast packets are tracked.  Broadcasts are never acknowledged,
+	  and ROUTING packets are excluded so acknowledgements themselves are
+	  not retried.
+
+if MESHTASTIC_RELIABLE
+
+config MESHTASTIC_RELIABLE_MAX_PENDING
+	int "Maximum packets awaiting acknowledgement"
+	default 3
+	range 1 16
+	help
+	  Number of unacknowledged packets tracked at the same time.  Each slot
+	  holds a copy of the wire frame, so a slot costs about 280 bytes of
+	  RAM.  A send that asks for an acknowledgement while the table is full
+	  is still transmitted, but is not retried.
+
+config MESHTASTIC_RELIABLE_RETRANSMISSIONS
+	int "Retransmissions before giving up"
+	default 3
+	range 0 8
+	help
+	  Number of times an unacknowledged packet is retransmitted before
+	  MESHTASTIC_EVENT_TX_NO_ACK is emitted.  Upstream Meshtastic firmware
+	  also retries three times.  Set to 0 to report a missing
+	  acknowledgement without ever retransmitting.
+
+config MESHTASTIC_RELIABLE_RETRY_INTERVAL_MS
+	int "Base interval between retransmissions (ms)"
+	default 12000
+	range 1000 120000
+	help
+	  Base wait before an unacknowledged packet is retransmitted.  The
+	  default is sized for the LongFast preset, where a multi-hop round
+	  trip plus the receiver's own channel-access delay can take several
+	  seconds.  Lower it for faster presets.
+
+config MESHTASTIC_RELIABLE_RETRY_JITTER_MS
+	int "Maximum random jitter added to the retry interval (ms)"
+	default 3000
+	range 0 30000
+	help
+	  Upper bound of a random delay added to every retransmission, so that
+	  nodes that lost the same packet do not retry in lockstep.
+
+endif # MESHTASTIC_RELIABLE
