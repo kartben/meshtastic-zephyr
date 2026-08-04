@@ -143,8 +143,8 @@ the Zephyr shell. Commands marked *(optional)* are only present when their corre
      - Get / set the device role
    * - ``meshtastic device rebroadcast [mode]``
      - Get / set the rebroadcast mode
-   * - ``meshtastic text send [-c <index>] [dest|broadcast] <message>``
-     - Send a text message *(optional)*
+   * - ``meshtastic text send [-a] [-c <index>] [dest|broadcast] <message>``
+     - Send a text message; ``-a`` asks the destination to acknowledge *(optional)*
    * - ``meshtastic nodedb list``
      - List known nodes *(optional)*
    * - ``meshtastic nodedb show <node|0xnode>``

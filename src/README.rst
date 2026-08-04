@@ -33,7 +33,7 @@ Enable :kconfig:option:`CONFIG_SHELL` and
 Useful commands include::
 
   meshtastic status
-  meshtastic text send [-c <index>] [dest|broadcast] <message>
+  meshtastic text send [-a] [-c <index>] [dest|broadcast] <message>
   meshtastic channel list|show|set|disable ...
   meshtastic device role|rebroadcast ...
 
@@ -49,7 +49,8 @@ messages confirmable. Set ``want_ack`` on a unicast
 under its original packet ID, until the destination replies with a ROUTING
 acknowledgement. The result is reported as ``MESHTASTIC_EVENT_TX_ACKED`` or
 ``MESHTASTIC_EVENT_TX_NO_ACK``, so an application can tell a delivered message
-from a lost one. Packets sent from the phone app already carry ``want_ack``.
+from a lost one. Packets sent from the phone app already carry ``want_ack``, and
+from the shell ``meshtastic text send -a`` requests it.
 
 Broadcasts are never tracked, since no node acknowledges them. Tune the number
 of retransmissions and the interval between them with
