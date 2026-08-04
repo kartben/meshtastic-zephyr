@@ -22,7 +22,7 @@ Feature support
 ***************
 
 The initial goal is to provide a minimal set of API for setting up and configuring the stack, as
-wel as sending and receiving messages.
+well as sending and receiving messages.
 
 A typical "original" Meshtastic firmware would typically expose a UI but this initial part doesn't
 have any at this point and instead focus has been put on providing shell commands that can be
@@ -76,7 +76,7 @@ Legend: ✅ Full · 🟡 Partial · ❌ Not yet
      - GATT service, compatible with the Meshtastic apps (tested on Android, macOS, and web client)
    * - Serial / UART transport
      - ✅
-     - StreamAPI framing over a chosen UART (test on Android, macOS, and web client)
+     - StreamAPI framing over a chosen UART (tested on Android, macOS, and web client)
    * - Settings edit over phoneAPI
      - ❌
      - Read/handshake only — use the shell to configure
@@ -116,7 +116,7 @@ Shell commands
 **************
 
 When ``CONFIG_MESHTASTIC_SHELL`` is enabled, the firmware registers a ``meshtastic`` command tree on
-the Zephyr . Commands marked *(optional)* are only present when their corresponding
+the Zephyr shell. Commands marked *(optional)* are only present when their corresponding
 ``CONFIG_MESHTASTIC_*`` Kconfig option is set.
 
 .. list-table::
@@ -206,7 +206,7 @@ Build the Meshtastic sample with:
 
    $ west build -b <board> samples/meshtastic
 
-Refer to the [sample's README](samples/meshtastic/README.rst) for more information on how to build
+Refer to the `sample's README <samples/meshtastic/README.rst>`_ for more information on how to build
 and run the sample and enable additional features.
 
 License

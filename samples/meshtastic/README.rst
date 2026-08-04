@@ -6,7 +6,7 @@ Overview
 
 This sample demonstrates the Zephyr-native Meshtastic stack. It initializes the stack and then
 registers a receive callback that logs incoming text messages and broadcasts a greeting at regular
-interval on the default "LongFast" channel.
+intervals on the default "LongFast" channel.
 
 Requirements
 ************
@@ -31,13 +31,10 @@ ID instead, enable custom source and set the default:
      -DCONFIG_MESHTASTIC_NODE_ID_CUSTOM=y \
      -DCONFIG_MESHTASTIC_NODE_ID_DEFAULT=0x01020304
 
-The sample can also be built for the LoRa radio emulator on ``native_sim``
-by adding the appropriate overlay.
+Shell commands
+**************
 
-Shell commands (TBC)
-********************
-
-When ``CONFIG_MESHTASTIC_SHELL=y``), the following shell commands are available:
+When ``CONFIG_MESHTASTIC_SHELL=y``, the following shell commands are available:
 
 * ``meshtastic status`` — node counters, primary channel hash, device role, rebroadcast mode
 * ``meshtastic channel list`` / ``channel show <0-7>`` — channel table
@@ -52,10 +49,10 @@ enabled, e.g.:
 
 * ``meshtastic nodedb list`` — list NodeDB entries
 * ``meshtastic nodedb show <node|0xnode>`` — show one NodeDB entry
-* ``meshtastic metrics send [-c <index>] [dest|broadcast]`` — send device metrics
-* ``meshtastic environment send [-c <index>] [dest|broadcast]`` — send environment telemetry
-* ``meshtastic nodeinfo send [-c <index>] [dest|broadcast]`` — send node information
-* ``meshtastic gnss send [-c <index>] [dest|broadcast]`` — send GNSS position
+* ``meshtastic metrics send [dest|broadcast]`` — send device metrics
+* ``meshtastic environment send [dest|broadcast]`` — send environment telemetry
+* ``meshtastic nodeinfo send [dest|broadcast]`` — send node information
+* ``meshtastic gnss send [dest|broadcast]`` — send GNSS position
 
 Sample Output
 *************
