@@ -42,7 +42,8 @@ When ``CONFIG_MESHTASTIC_SHELL=y``, the following shell commands are available:
 * ``meshtastic channel disable <index>`` — disable a slot
 * ``meshtastic device role [client|router|...]`` — mesh device role
 * ``meshtastic device rebroadcast [all|none|local_only|...]`` — relay policy
-* ``meshtastic text send [-c <index>] [dest|broadcast] <message>`` — send on a specific channel
+* ``meshtastic text send [-a] [-c <index>] [dest|broadcast] <message>`` — send on a specific
+  channel; ``-a`` asks the destination to acknowledge the message
 
 More commands are available when additional features (e.g. environment metrics, GNSS, ...) are
 enabled, e.g.:

@@ -19,6 +19,7 @@
 
 #include "meshtastic_channels.h"
 #include "meshtastic_config_store.h"
+#include "meshtastic_reliable.h"
 
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
@@ -36,6 +37,7 @@ struct shell_work_item {
 	uint32_t dest;
 	uint32_t portnum;
 	uint8_t channel_index;
+	bool want_ack;
 	size_t payload_len;
 	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
 };
@@ -96,13 +98,15 @@ static void shell_work_thread_fn(void *p1, void *p2, void *p3)
 
 		switch (item.op) {
 		case SHELL_WORK_SEND_TEXT:
-			if (item.channel_index != MESHTASTIC_CHANNEL_INDEX_INVALID) {
+			if (item.channel_index != MESHTASTIC_CHANNEL_INDEX_INVALID ||
+			    item.want_ack) {
 				struct meshtastic_packet packet = {
 					.to = item.dest,
 					.portnum = MESHTASTIC_PORT_TEXT_MESSAGE,
 					.payload = item.payload,
 					.payload_len = item.payload_len,
 					.channel_index = item.channel_index,
+					.want_ack = item.want_ack,
 				};
 
 				ret = meshtastic_send_packet(&packet, K_FOREVER);
@@ -275,6 +279,9 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "rx dropped: %u, rx re-arm failures: %u", status.rx_dropped,
 		    status.rx_rearm_failures);
 	shell_print(sh, "relayed: %u", status.relayed_packets);
+	if (IS_ENABLED(CONFIG_MESHTASTIC_RELIABLE)) {
+		shell_print(sh, "awaiting ack: %zu", meshtastic_reliable_pending());
+	}
 	shell_print(sh, "last rx: from=0x%08x rssi=%d snr=%d", status.last_rx_from,
 		    status.last_rssi, status.last_snr);
 	shell_print(sh, "primary channel: %u \"%s\" hash=0x%02x",
@@ -1043,23 +1050,37 @@ static int cmd_text_send(const struct shell *sh, size_t argc, char **argv)
 	int ret;
 	int len;
 
+	static const char usage[] =
+		"usage: meshtastic text send [-a] [-c <index>] [dest|broadcast] <message>";
+
 	if (argc < 2U) {
-		shell_error(sh,
-			    "usage: meshtastic text send [-c <index>] [dest|broadcast] <message>");
+		shell_error(sh, "%s", usage);
 		return -EINVAL;
 	}
 
-	if (strcmp(argv[1], "-c") == 0) {
-		if (argc < 4U) {
-			shell_error(sh, "usage: meshtastic text send -c <index> [dest|broadcast] "
-					"<message>");
-			return -EINVAL;
+	/* Options may appear in any order, and a message may itself start with '-'. */
+	while (msg_arg < argc) {
+		if (strcmp(argv[msg_arg], "-c") == 0) {
+			if ((msg_arg + 2U) >= argc) {
+				shell_error(sh, "%s", usage);
+				return -EINVAL;
+			}
+			ret = shell_parse_channel_index(sh, argv[msg_arg + 1U],
+							&item.channel_index);
+			if (ret < 0) {
+				return ret;
+			}
+			msg_arg += 2U;
+		} else if (strcmp(argv[msg_arg], "-a") == 0) {
+			if ((msg_arg + 1U) >= argc) {
+				shell_error(sh, "%s", usage);
+				return -EINVAL;
+			}
+			item.want_ack = true;
+			msg_arg += 1U;
+		} else {
+			break;
 		}
-		ret = shell_parse_channel_index(sh, argv[2], &item.channel_index);
-		if (ret < 0) {
-			return ret;
-		}
-		msg_arg = 3U;
 	}
 
 	if (argc == (msg_arg + 1U)) {
@@ -1077,6 +1098,11 @@ static int cmd_text_send(const struct shell *sh, size_t argc, char **argv)
 	} else {
 		shell_error(sh, "message required");
 		return -EINVAL;
+	}
+
+	if (item.want_ack && item.dest == MESHTASTIC_NODE_BROADCAST) {
+		shell_warn(sh, "-a ignored: broadcasts are not acknowledged");
+		item.want_ack = false;
 	}
 
 	if (len < 0) {
@@ -1097,8 +1123,9 @@ static int cmd_text_send(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(meshtastic_text_cmds,
 			       SHELL_CMD(send, NULL,
-					 SHELL_HELP("Send text message.",
-						    "[-c <index>] [dest|broadcast] <message>"),
+					 SHELL_HELP("Send text message. -a asks the destination "
+						    "to acknowledge.",
+						    "[-a] [-c <index>] [dest|broadcast] <message>"),
 					 cmd_text_send),
 			       SHELL_SUBCMD_SET_END);
 #endif /* CONFIG_MESHTASTIC_MESSAGE */
