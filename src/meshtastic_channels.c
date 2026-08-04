@@ -194,8 +194,6 @@ int meshtastic_channels_init_from_config(const struct meshtastic_config *cfg)
 	channel_fixup(0);
 
 	mt.ch_hash = meshtastic_channels_primary_hash();
-	mt.psk_len = cfg->psk_len;
-	memcpy(mt.psk, cfg->psk, cfg->psk_len);
 	mt.channel_name = meshtastic_channels_primary_name();
 
 	return 0;
@@ -237,12 +235,6 @@ int meshtastic_channels_set_slot(uint8_t index, const meshtastic_Channel *channe
 	channel_fixup(index);
 
 	if (index == primary_index) {
-		struct meshtastic_channel_key key;
-
-		if (meshtastic_channels_primary_key(&key) == 0) {
-			mt.psk_len = key.len;
-			memcpy(mt.psk, key.bytes, key.len);
-		}
 		mt.ch_hash = meshtastic_channels_primary_hash();
 		mt.channel_name = meshtastic_channels_primary_name();
 	}
