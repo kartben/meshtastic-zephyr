@@ -32,7 +32,6 @@ Useful commands include::
 
   meshtastic status
   meshtastic text send [-c <index>] [dest|broadcast] <message>
-  meshtastic send-port <dest|broadcast> <port> <payload>
   meshtastic channel list|show|set|disable ...
   meshtastic device role|rebroadcast ...
 
