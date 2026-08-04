@@ -546,22 +546,6 @@ const char *meshtastic_get_channel_name(uint8_t index)
 	return meshtastic_channels_get_name(index);
 }
 
-const uint8_t *meshtastic_runtime_psk(size_t *psk_len)
-{
-	static uint8_t psk_buf[32];
-
-	if (psk_len != NULL) {
-		*psk_len = mt.psk_len;
-	}
-
-	if (mt.psk_len > 0U) {
-		memcpy(psk_buf, mt.psk, mt.psk_len);
-		return psk_buf;
-	}
-
-	return meshtastic_default_psk;
-}
-
 uint8_t meshtastic_runtime_hop_limit(void)
 {
 	return mt.hop_limit;

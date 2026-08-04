@@ -37,8 +37,6 @@ struct meshtastic_dup_entry {
 struct meshtastic_context {
 	const struct device *lora_dev;
 	uint32_t node_id;
-	uint8_t psk[32];
-	size_t psk_len;
 	uint8_t ch_hash;
 	uint8_t hop_limit;
 	int8_t tx_power;
@@ -80,7 +78,6 @@ meshtastic_HardwareModel meshtastic_hw_model(void);
 void meshtastic_fill_user(meshtastic_User *user);
 uint32_t meshtastic_runtime_frequency(void);
 const char *meshtastic_runtime_channel_name(void);
-const uint8_t *meshtastic_runtime_psk(size_t *psk_len);
 uint8_t meshtastic_runtime_hop_limit(void);
 void meshtastic_set_ble_connected(bool connected);
 
