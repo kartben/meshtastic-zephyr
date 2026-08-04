@@ -60,6 +60,35 @@ static void log_wire_rx(const uint8_t *pkt, int len, int16_t rssi, int8_t snr)
 }
 #endif /* CONFIG_MESHTASTIC_PACKET_HEXDUMP */
 
+/*
+ * A sender that gets no acknowledgement retransmits the original packet ID, so
+ * the retry lands here as a duplicate. Dropping it silently would strand the
+ * sender whenever it was the acknowledgement, rather than the packet, that was
+ * lost: it would retry to exhaustion while we stayed quiet. Reply again instead.
+ */
+static void reack_duplicate(const uint8_t *buf, int len, int16_t rssi, int8_t snr)
+{
+	const struct meshtastic_wire_header *hdr = (const struct meshtastic_wire_header *)buf;
+	struct meshtastic_packet packet;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	bool decoded = false;
+	int ret;
+
+	if ((hdr->flags & MESHTASTIC_FLAGS_WANT_ACK) == 0U ||
+	    sys_le32_to_cpu(hdr->dest) != mt.node_id) {
+		return;
+	}
+
+	ret = meshtastic_try_decode_wire_packet(buf, len, rssi, snr, &packet, payload,
+						sizeof(payload), &decoded);
+	if (ret < 0 || !decoded) {
+		return;
+	}
+
+	LOG_DBG("Re-ACK duplicate id=0x%08x from 0x%08x", packet.id, packet.from);
+	meshtastic_routing_on_decoded(&packet);
+}
+
 static void relay_packet(const uint8_t *buf, int len, const struct meshtastic_wire_header *hdr,
 			 uint8_t hop_limit)
 {
@@ -223,6 +252,7 @@ void meshtastic_router_process_lora_rx(const uint8_t *buf, int len, int16_t rssi
 #if defined(CONFIG_MESHTASTIC_AIRTIME)
 		meshtastic_airtime_log(MESHTASTIC_AIRTIME_RX_ALL, airtime_ms);
 #endif
+		reack_duplicate(buf, len, rssi, snr);
 		return;
 	}
 
