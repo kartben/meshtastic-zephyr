@@ -281,105 +281,94 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	k_mutex_init(&mt_ws.lock);
 
 	mt.initialized = true;
-	mt.status.initialized = true;
 
 	ret = meshtastic_config_store_seed(cfg);
 	if (ret < 0) {
-		mt.initialized = false;
-		mt.status.initialized = false;
-		return ret;
+		goto err;
 	}
 
 #if defined(CONFIG_MESHTASTIC_SETTINGS)
 	ret = meshtastic_settings_init();
 	if (ret < 0) {
-		mt.initialized = false;
-		mt.status.initialized = false;
-		return ret;
+		goto err;
 	}
 #endif
 
 	ret = meshtastic_config_store_apply_core();
 	if (ret < 0) {
-		mt.initialized = false;
-		mt.status.initialized = false;
-		return ret;
+		goto err;
 	}
 
 	ret = meshtastic_settings_apply_all();
 	if (ret < 0) {
-		mt.initialized = false;
-		mt.status.initialized = false;
-		return ret;
+		goto err;
 	}
 
 	ret = meshtastic_radio_init();
 	if (ret < 0) {
-		mt.initialized = false;
-		mt.status.initialized = false;
-		return ret;
+		goto err;
 	}
 
 #if defined(CONFIG_MESHTASTIC_GNSS)
 	ret = meshtastic_gnss_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_DEVICE_METRICS)
 	ret = meshtastic_metrics_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_ENVIRONMENT_METRICS)
 	ret = meshtastic_environment_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_NODEDB)
 	ret = meshtastic_nodedb_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_NODEINFO)
 	ret = meshtastic_nodeinfo_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_MESSAGE)
 	ret = meshtastic_message_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_BLE)
 	ret = meshtastic_ble_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_SERIAL)
 	ret = meshtastic_serial_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
 #if defined(CONFIG_MESHTASTIC_MQTT)
 	ret = meshtastic_mqtt_init();
 	if (ret < 0) {
-		return ret;
+		goto err;
 	}
 #endif
 
@@ -387,6 +376,12 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 		mt.frequency);
 
 	return 0;
+
+err:
+	LOG_ERR("Meshtastic init failed (%d)", ret);
+	mt.initialized = false;
+
+	return ret;
 }
 
 static int send_packet_prepare(const struct meshtastic_packet *packet,
