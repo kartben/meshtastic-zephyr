@@ -65,6 +65,10 @@ Legend: ✅ Full · 🟡 Partial · ❌ Not yet
    * - Duplicate suppression
      - ✅
      - Configurable packet dedup cache
+   * - Acknowledgements / reliable delivery
+     - ✅
+     - Replies to ``want_ack`` packets, retransmits unacknowledged unicasts and
+       reports the outcome as a stack event
    * - **Phone interface**
      -
      -

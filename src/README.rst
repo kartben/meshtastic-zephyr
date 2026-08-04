@@ -18,6 +18,8 @@ Key features
   channel.
 * Send and receive raw application payloads through the public C API.
 * Configure channels, device role, and rebroadcast policy at runtime.
+* Confirm delivery of direct messages with acknowledgements and automatic
+  retransmission.
 * Connect phone or host tools through shell, BLE PhoneAPI, UART PhoneAPI, or
   MQTT gateway support.
 * Advertise optional GNSS position, telemetry, NodeInfo, and NodeDB data.
@@ -37,6 +39,23 @@ Useful commands include::
 
 Feature-specific commands for GNSS, metrics, environment, NodeInfo, and NodeDB
 appear when their matching options are enabled.
+
+Reliable delivery
+*****************
+
+:kconfig:option:`CONFIG_MESHTASTIC_RELIABLE` (enabled by default) makes direct
+messages confirmable. Set ``want_ack`` on a unicast
+:c:struct:`meshtastic_packet` and the stack retransmits the frame, unchanged and
+under its original packet ID, until the destination replies with a ROUTING
+acknowledgement. The result is reported as ``MESHTASTIC_EVENT_TX_ACKED`` or
+``MESHTASTIC_EVENT_TX_NO_ACK``, so an application can tell a delivered message
+from a lost one. Packets sent from the phone app already carry ``want_ack``.
+
+Broadcasts are never tracked, since no node acknowledges them. Tune the number
+of retransmissions and the interval between them with
+:kconfig:option:`CONFIG_MESHTASTIC_RELIABLE_RETRANSMISSIONS` and
+:kconfig:option:`CONFIG_MESHTASTIC_RELIABLE_RETRY_INTERVAL_MS`; the defaults
+suit the LongFast preset, where a multi-hop round trip takes seconds.
 
 BLE PhoneAPI
 ************

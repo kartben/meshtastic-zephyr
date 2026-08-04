@@ -45,6 +45,7 @@ if(CONFIG_MESHTASTIC)
     meshtastic_routing.c
     meshtastic_settings_apply.c
   )
+  zephyr_library_sources_ifdef(CONFIG_MESHTASTIC_RELIABLE meshtastic_reliable.c)
   zephyr_library_sources_ifdef(CONFIG_MESHTASTIC_SETTINGS meshtastic_settings.c)
   zephyr_library_sources_ifdef(CONFIG_MESHTASTIC_PHONEAPI
     meshtastic_phoneapi.c

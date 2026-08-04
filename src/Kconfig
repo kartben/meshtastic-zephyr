@@ -53,6 +53,7 @@ module-str = meshtastic
 source "subsys/logging/Kconfig.template.log_config"
 
 rsource "Kconfig.core"
+rsource "Kconfig.reliable"
 rsource "Kconfig.nodedb"
 rsource "Kconfig.nodeinfo"
 rsource "Kconfig.message"
