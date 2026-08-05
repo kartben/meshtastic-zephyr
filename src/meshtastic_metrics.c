@@ -39,23 +39,24 @@ static void collect_fuel_gauge(meshtastic_DeviceMetrics *metrics)
 		return;
 	}
 
-	ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_RELATIVE_STATE_OF_CHARGE, &val);
+	ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_RELATIVE_STATE_OF_CHARGE_PCT, &val);
 	if (ret == 0) {
 		metrics->has_battery_level = true;
-		metrics->battery_level = MIN((uint32_t)val.relative_state_of_charge, 100U);
+		metrics->battery_level = MIN((uint32_t)val.relative_state_of_charge_pct, 100U);
 	} else {
-		ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_ABSOLUTE_STATE_OF_CHARGE,
+		ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_ABSOLUTE_STATE_OF_CHARGE_PCT,
 					  &val);
 		if (ret == 0) {
 			metrics->has_battery_level = true;
-			metrics->battery_level = MIN((uint32_t)val.absolute_state_of_charge, 100U);
+			metrics->battery_level =
+				MIN((uint32_t)val.absolute_state_of_charge_pct, 100U);
 		}
 	}
 
-	ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_VOLTAGE, &val);
+	ret = fuel_gauge_get_prop(fuel_gauge_dev, FUEL_GAUGE_VOLTAGE_UV, &val);
 	if (ret == 0) {
 		metrics->has_voltage = true;
-		metrics->voltage = (float)val.voltage / 1000000.0f;
+		metrics->voltage = (float)val.voltage_uv / 1000000.0f;
 	}
 #else
 	ARG_UNUSED(metrics);
