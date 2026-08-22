@@ -234,11 +234,11 @@ report into the repository's `code scanning alerts
 * **CodeQL** (``.github/workflows/codeql.yml``) on the C sources and on the GitHub Actions
   workflows.
 
-Both analyses only see code that is actually compiled, which is why CI builds the sample in the
-``sample.meshtastic.full`` and ``sample.meshtastic.mqtt`` configurations on top of the default one:
-between them they pull in Bluetooth, the PhoneAPI, the shell commands, GNSS, environment telemetry
-and the MQTT gateway. The serial PhoneAPI transport is still not covered, as it needs a board
-providing a ``zephyr,meshtastic-uart`` devicetree chosen node.
+Both analyses only see code that is actually compiled. The ``tests/`` suites build 25 of the
+module's 26 sources on ``native_sim``; the ``sample.meshtastic.full`` and ``sample.meshtastic.mqtt``
+configurations cover the twenty-sixth, ``meshtastic_ble.c``, which needs a Bluetooth controller, and
+build the whole stack the way it actually ships — cross-compiled and size-optimised, against a real
+Bluetooth or Wi-Fi stack rather than the host.
 
 Documentation
 *************
