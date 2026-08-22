@@ -215,24 +215,25 @@ static int decrypt_mesh_encrypted_key(uint32_t from, uint32_t id, const uint8_t 
 		return -EINVAL;
 	}
 
-	if (key->len == 0U) {
-		return -ENOTSUP;
-	}
-
-	if (key->len != 16U && key->len != 32U) {
+	if (key->len != 0U && key->len != 16U && key->len != 32U) {
 		return -EINVAL;
 	}
 
 	k_mutex_lock(&mt_ws.lock, K_FOREVER);
 
-	memset(nonce, 0, sizeof(nonce));
-	sys_put_le32(id, nonce);
-	sys_put_le32(from, nonce + 8U);
+	if (key->len == 0U) {
+		/* Encryption disabled for this channel: the wire carries cleartext. */
+		memcpy(mt_ws.rx_dec, enc, enc_len);
+	} else {
+		memset(nonce, 0, sizeof(nonce));
+		sys_put_le32(id, nonce);
+		sys_put_le32(from, nonce + 8U);
 
-	ret = ctr_crypt(key->bytes, key->len, nonce, enc, mt_ws.rx_dec, enc_len);
-	if (ret < 0) {
-		k_mutex_unlock(&mt_ws.lock);
-		return ret;
+		ret = ctr_crypt(key->bytes, key->len, nonce, enc, mt_ws.rx_dec, enc_len);
+		if (ret < 0) {
+			k_mutex_unlock(&mt_ws.lock);
+			return ret;
+		}
 	}
 
 	stream = pb_istream_from_buffer(mt_ws.rx_dec, enc_len);
@@ -530,13 +531,19 @@ int meshtastic_build_wire_packet(const struct meshtastic_packet *packet, uint8_t
 
 	wire_hash = meshtastic_channels_get_hash(ch_index);
 
-	memset(nonce, 0, sizeof(nonce));
-	sys_put_le32(packet->id, nonce);
-	sys_put_le32(packet->from, nonce + 8U);
+	if (key.len == 0U) {
+		/* Encryption disabled for this channel: the payload goes out as-is. */
+		memcpy(mt_ws.enc_buf, mt_ws.pb_buf, encoded_len);
+	} else {
+		memset(nonce, 0, sizeof(nonce));
+		sys_put_le32(packet->id, nonce);
+		sys_put_le32(packet->from, nonce + 8U);
 
-	ret = ctr_crypt(key.bytes, key.len, nonce, mt_ws.pb_buf, mt_ws.enc_buf, encoded_len);
-	if (ret < 0) {
-		return ret;
+		ret = ctr_crypt(key.bytes, key.len, nonce, mt_ws.pb_buf, mt_ws.enc_buf,
+				encoded_len);
+		if (ret < 0) {
+			return ret;
+		}
 	}
 
 	hdr = (struct meshtastic_wire_header *)out;
