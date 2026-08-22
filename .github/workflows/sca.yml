@@ -14,7 +14,12 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  # Superseding a pull request's run saves a runner and costs nothing. Doing the
+  # same on main throws away an analysis whose result is the point of the run,
+  # and a merge landing while one is in flight would keep starving it. Those
+  # queue instead: GitHub keeps at most one pending run per group, so a burst of
+  # merges collapses to the newest rather than piling up.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gcc-analyzer:
