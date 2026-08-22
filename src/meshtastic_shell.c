@@ -39,7 +39,8 @@ struct shell_work_item {
 	uint8_t channel_index;
 	bool want_ack;
 	size_t payload_len;
-	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	/* One byte over the message limit: meshtastic_send_text() needs a NUL. */
+	uint8_t payload[MESHTASTIC_MAX_TEXT_LEN + 1U];
 };
 
 static const char *shell_err_msg(int ret)
@@ -1085,7 +1086,7 @@ static int cmd_text_send(const struct shell *sh, size_t argc, char **argv)
 
 	if (argc == (msg_arg + 1U)) {
 		item.dest = MESHTASTIC_NODE_BROADCAST;
-		len = append_message_from_argv(item.payload, sizeof(item.payload), argc, argv,
+		len = append_message_from_argv(item.payload, MESHTASTIC_MAX_TEXT_LEN, argc, argv,
 					       msg_arg);
 	} else if (argc >= (msg_arg + 2U)) {
 		ret = parse_u32(sh, argv[msg_arg], &item.dest);
@@ -1093,7 +1094,7 @@ static int cmd_text_send(const struct shell *sh, size_t argc, char **argv)
 			return ret;
 		}
 
-		len = append_message_from_argv(item.payload, sizeof(item.payload), argc, argv,
+		len = append_message_from_argv(item.payload, MESHTASTIC_MAX_TEXT_LEN, argc, argv,
 					       msg_arg + 1U);
 	} else {
 		shell_error(sh, "message required");
