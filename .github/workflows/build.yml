@@ -71,7 +71,7 @@ jobs:
               --gcov-object-directory twister-out \
               "${TRACE_ARGS[@]}" \
               --markdown coverage-report.md \
-              --html coverage-html/ --html-details
+              --html-details coverage-html/index.html
           else
             printf '%s\n\n%s\n' '## Protocol test coverage' \
               '_Coverage data not available._' > coverage-report.md
