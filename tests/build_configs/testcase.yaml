@@ -1,0 +1,31 @@
+common:
+  # Compiled, never run. The modules only these configurations build (MQTT, the
+  # settings backend) therefore show up in the coverage report at 0%, which is
+  # an accurate picture of what the running suites reach.
+  build_only: true
+  tags:
+    - meshtastic
+    - build
+    - native_sim
+  integration_platforms:
+    - native_sim/native/64
+  platform_allow:
+    - native_sim/native/64
+tests:
+  # Feature combinations the running suites never compile.
+  meshtastic.build.settings:
+    extra_args:
+      - EXTRA_CONF_FILE=overlay-settings.conf
+  meshtastic.build.mqtt:
+    extra_args:
+      - EXTRA_CONF_FILE=overlay-mqtt.conf
+  # Optional behaviour switched off: these halves are easy to break because the
+  # code that uses them is compiled either way behind IS_ENABLED().
+  meshtastic.build.minimal:
+    extra_configs:
+      - CONFIG_MESHTASTIC_RELIABLE=n
+      - CONFIG_MESHTASTIC_AIRTIME=n
+      - CONFIG_MESHTASTIC_NODEDB=n
+      - CONFIG_MESHTASTIC_NODEINFO=n
+      - CONFIG_MESHTASTIC_MESSAGE=n
+      - CONFIG_MESHTASTIC_DEVICE_METRICS=n
