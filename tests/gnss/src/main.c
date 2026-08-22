@@ -116,7 +116,8 @@ static void decode_tx(struct meshtastic_packet *packet)
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
 
-	mock_lora_wait_for_send_count(1U, K_MSEC(1000));
+	zassert_true(mock_lora_wait_for_send_count(1U, K_MSEC(1000)),
+		     "the radio did not transmit in time");
 	wire_len = mock_lora_last_tx(wire, sizeof(wire));
 	zassert_ok(meshtastic_decode_wire_packet(wire, (int)wire_len, 0, 0, packet, tx_payload,
 						 sizeof(tx_payload)),
@@ -268,7 +269,8 @@ ZTEST(gnss_position, test_a_repeated_position_request_is_suppressed)
 	mock_lora_reset();
 
 	meshtastic_dispatch_modules(&request);
-	mock_lora_wait_for_send_count(1U, K_MSEC(1000));
+	zassert_true(mock_lora_wait_for_send_count(1U, K_MSEC(1000)),
+		     "the radio did not transmit in time");
 
 	request.id++;
 	meshtastic_dispatch_modules(&request);

@@ -13,6 +13,7 @@
 #ifndef MESHTASTIC_TESTS_MOCK_LORA_H_
 #define MESHTASTIC_TESTS_MOCK_LORA_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -47,8 +48,8 @@ uint32_t mock_lora_last_tx(uint8_t *out, size_t out_len);
 /** Modem configuration from the most recent @c lora_config() call. */
 void mock_lora_last_config(struct lora_modem_config *out);
 
-/** Block until @p expected frames have been transmitted, or fail the test. */
-void mock_lora_wait_for_send_count(uint32_t expected, k_timeout_t timeout);
+/** Block until @p expected frames have been transmitted; false on timeout. */
+bool mock_lora_wait_for_send_count(uint32_t expected, k_timeout_t timeout);
 
 /** Deliver @p wire to the stack as if the radio had received it. */
 void mock_lora_inject_rx(const uint8_t *wire, uint32_t wire_len, int16_t rssi, int8_t snr);

@@ -113,7 +113,8 @@ ZTEST(nodeinfo, test_a_repeated_request_is_suppressed)
 	};
 
 	meshtastic_dispatch_modules(&request);
-	mock_lora_wait_for_send_count(1U, K_MSEC(500));
+	zassert_true(mock_lora_wait_for_send_count(1U, K_MSEC(500)),
+		     "the radio did not transmit in time");
 
 	request.id++;
 	meshtastic_dispatch_modules(&request);

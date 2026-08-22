@@ -124,7 +124,8 @@ void modules_decode_tx(uint32_t expected, struct meshtastic_packet *packet, uint
 	uint8_t wire[MESHTASTIC_PKT_MAX];
 	uint32_t wire_len;
 
-	mock_lora_wait_for_send_count(expected, K_MSEC(500));
+	zassert_true(mock_lora_wait_for_send_count(expected, K_MSEC(500)),
+		     "the radio did not transmit in time");
 	zassert_equal(mock_lora_send_count(), expected, "unexpected lora_send count");
 
 	wire_len = mock_lora_last_tx(wire, sizeof(wire));

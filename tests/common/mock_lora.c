@@ -8,7 +8,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/kernel.h>
-#include <zephyr/ztest.h>
+#include <zephyr/sys/__assert.h>
 
 #include "mock_lora.h"
 
@@ -62,7 +62,7 @@ static int mock_lora_send(const struct device *dev, uint8_t *data, uint32_t data
 	ARG_UNUSED(dev);
 
 	k_mutex_lock(&mock.lock, K_FOREVER);
-	zassert_true(data_len <= sizeof(mock.last_tx), "unexpected tx len %u", data_len);
+	__ASSERT(data_len <= sizeof(mock.last_tx), "unexpected tx len %u", data_len);
 	memcpy(mock.last_tx, data, data_len);
 	mock.last_tx_len = data_len;
 	mock.send_count++;
@@ -174,7 +174,7 @@ uint32_t mock_lora_last_tx(uint8_t *out, size_t out_len)
 	k_mutex_lock(&mock.lock, K_FOREVER);
 	len = mock.last_tx_len;
 	if (out != NULL) {
-		zassert_true(len <= out_len, "tx buffer too small (%u > %zu)", len, out_len);
+		__ASSERT(len <= out_len, "tx buffer too small (%u > %zu)", len, out_len);
 		memcpy(out, mock.last_tx, len);
 	}
 	k_mutex_unlock(&mock.lock);
@@ -189,20 +189,18 @@ void mock_lora_last_config(struct lora_modem_config *out)
 	k_mutex_unlock(&mock.lock);
 }
 
-void mock_lora_wait_for_send_count(uint32_t expected, k_timeout_t timeout)
+bool mock_lora_wait_for_send_count(uint32_t expected, k_timeout_t timeout)
 {
 	const int64_t deadline = k_uptime_get() + k_ticks_to_ms_floor64(timeout.ticks);
-	uint32_t count;
 
 	do {
-		count = mock_lora_send_count();
-		if (count >= expected) {
-			return;
+		if (mock_lora_send_count() >= expected) {
+			return true;
 		}
 		k_sleep(K_MSEC(10));
 	} while (k_uptime_get() <= deadline);
 
-	zassert_unreachable("timed out waiting for %u lora_send calls (saw %u)", expected, count);
+	return false;
 }
 
 void mock_lora_inject_rx(const uint8_t *wire, uint32_t wire_len, int16_t rssi, int8_t snr)
@@ -211,14 +209,14 @@ void mock_lora_inject_rx(const uint8_t *wire, uint32_t wire_len, int16_t rssi, i
 	lora_recv_cb cb;
 	void *user_data;
 
-	zassert_true(wire_len <= sizeof(frame), "unexpected rx len %u", wire_len);
+	__ASSERT(wire_len <= sizeof(frame), "unexpected rx len %u", wire_len);
 
 	k_mutex_lock(&mock.lock, K_FOREVER);
 	cb = mock.rx_cb;
 	user_data = mock.rx_user_data;
 	k_mutex_unlock(&mock.lock);
 
-	zassert_not_null(cb, "radio receive callback not armed");
+	__ASSERT(cb != NULL, "radio receive callback not armed");
 
 	/* The driver API hands the stack a mutable buffer; keep the caller's intact. */
 	memcpy(frame, wire, wire_len);

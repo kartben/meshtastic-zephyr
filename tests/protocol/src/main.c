@@ -1010,7 +1010,8 @@ ZTEST(protocol_stack, test_unacknowledged_packet_is_retransmitted_then_reported)
 	first_len = mock_lora_last_tx(first, sizeof(first));
 
 	/* The test build configures one retransmission, roughly one second out. */
-	mock_lora_wait_for_send_count(2U, K_MSEC(3000));
+	zassert_true(mock_lora_wait_for_send_count(2U, K_MSEC(3000)),
+		     "the radio did not transmit in time");
 	retry_len = mock_lora_last_tx(retry, sizeof(retry));
 
 	/*
@@ -1040,12 +1041,14 @@ ZTEST(protocol_stack, test_duplicate_want_ack_packet_is_acknowledged_again)
 	build_peer_want_ack_wire(0x0DEF0001U, "hi", wire, &wire_len);
 
 	mock_lora_inject_rx(wire, wire_len, -20, 5);
-	mock_lora_wait_for_send_count(1U, K_MSEC(1000));
+	zassert_true(mock_lora_wait_for_send_count(1U, K_MSEC(1000)),
+		     "the radio did not transmit in time");
 	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for delivery");
 
 	/* The same frame again: suppressed as a duplicate, but still acknowledged. */
 	mock_lora_inject_rx(wire, wire_len, -20, 5);
-	mock_lora_wait_for_send_count(2U, K_MSEC(1000));
+	zassert_true(mock_lora_wait_for_send_count(2U, K_MSEC(1000)),
+		     "the radio did not transmit in time");
 	zassert_equal(state.recv_count, 1U, "duplicate must not be delivered twice");
 }
 
