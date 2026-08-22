@@ -17,32 +17,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  analyze-actions:
+    # Workflow files, as upstream Zephyr does: catches things like shell
+    # injection through untrusted GitHub context values. This job checks out at
+    # the workspace root, because the "actions" extractor resolves the config
+    # path filters relative to the workspace rather than to the source root.
+    name: Analyze (actions)
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Workflow files, as upstream Zephyr does: catches things like shell
-          # injection through untrusted GitHub context values.
-          - language: actions
-            build-mode: none
-            config-file: ./meshtastic-zephyr/.github/codeql/codeql-actions-config.yml
-            timeout: 20
-          # The mesh stack itself. Upstream Zephyr leaves C/C++ out of its
-          # own CodeQL run - building the whole tree under the tracer is not
-          # tractable there - but this repository is one module, its builds are
-          # already part of CI, and it parses packets straight off the air, so
-          # the taint analysis is worth the build time.
-          - language: c-cpp
-            build-mode: manual
-            config-file: ./meshtastic-zephyr/.github/codeql/codeql-c-cpp-config.yml
-            timeout: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+          build-mode: none
+          queries: security-extended
+          config-file: ./.github/codeql/codeql-actions-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:actions"
+
+  analyze-c-cpp:
+    # The mesh stack itself. Upstream Zephyr leaves C/C++ out of its own CodeQL
+    # run - building the whole tree under the tracer is not tractable there -
+    # but this repository is one module, its builds are already part of CI, and
+    # it parses packets straight off the air, so the taint analysis is worth
+    # the build time. This job needs a west workspace around the application,
+    # hence the checkout one directory below the workspace root.
+    name: Analyze (c-cpp)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,13 +68,11 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        if: matrix.build-mode == 'manual'
         uses: actions/setup-python@v5
         with:
           python-version: 3.12
 
       - name: Setup Zephyr project
-        if: matrix.build-mode == 'manual'
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: meshtastic-zephyr
@@ -67,7 +82,6 @@ jobs:
           enable-ccache: false
 
       - name: Fetch Espressif binary blobs
-        if: matrix.build-mode == 'manual'
         shell: bash
         run: |
           # The T-Watch S3 Bluetooth and Wi-Fi builds link against Espressif's
@@ -78,16 +92,15 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          languages: c-cpp
+          build-mode: manual
           queries: security-extended
-          config-file: ${{ matrix.config-file }}
-          # The Zephyr workspace is checked out around the application, so the
-          # repository is one directory below the workspace root.
+          # Building the module necessarily compiles Zephyr and its west
+          # modules as well; the source root is what keeps the database, and so
+          # the results, to the code maintained here.
           source-root: meshtastic-zephyr
 
       - name: Build
-        if: matrix.build-mode == 'manual'
         working-directory: meshtastic-zephyr
         shell: bash
         env:
@@ -107,7 +120,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:c-cpp"
           checkout_path: ${{ github.workspace }}/meshtastic-zephyr
           # A C/C++ database of a Zephyr build is multiple gigabytes and is
           # mostly upstream code; there is no point in shipping it anywhere.
