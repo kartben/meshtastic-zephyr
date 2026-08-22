@@ -91,8 +91,26 @@ ZTEST(shell_commands, test_channel_set_rejects_bad_arguments)
 	zassert_equal(shell_run("meshtastic channel set 1"), -EINVAL);
 	shell_expect("usage:");
 
+	zassert_equal(shell_run("meshtastic channel set 8 name Private"), -EINVAL);
+	shell_expect("invalid channel index: 8");
+
 	zassert_equal(shell_run("meshtastic channel set 1 name"), -EINVAL);
 	shell_expect("name requires a value");
+
+	zassert_equal(shell_run("meshtastic channel set 1 role"), -EINVAL);
+	shell_expect("role requires a value");
+
+	zassert_equal(shell_run("meshtastic channel set 1 psk"), -EINVAL);
+	shell_expect("psk requires a value");
+
+	zassert_equal(shell_run("meshtastic channel set 1 psk hex"), -EINVAL);
+	shell_expect("psk hex requires hex digits");
+
+	zassert_equal(shell_run("meshtastic channel set 1 uplink"), -EINVAL);
+	shell_expect("uplink requires on|off");
+
+	zassert_equal(shell_run("meshtastic channel set 1 downlink"), -EINVAL);
+	shell_expect("downlink requires on|off");
 
 	zassert_equal(shell_run("meshtastic channel set 1 role bogus"), -EINVAL);
 	shell_expect("invalid channel role: bogus");
@@ -134,6 +152,15 @@ ZTEST(shell_commands, test_device_role_can_be_read_and_written)
 
 	zassert_equal(shell_run("meshtastic device role bogus"), -EINVAL);
 	shell_expect("invalid device role: bogus");
+}
+
+ZTEST(shell_commands, test_device_commands_take_at_most_one_argument)
+{
+	zassert_equal(shell_run("meshtastic device role client extra"), -EINVAL);
+	shell_expect("usage: meshtastic device role [name]");
+
+	zassert_equal(shell_run("meshtastic device rebroadcast all extra"), -EINVAL);
+	shell_expect("usage: meshtastic device rebroadcast [mode]");
 }
 
 ZTEST(shell_commands, test_rebroadcast_mode_can_be_read_and_written)
