@@ -8,6 +8,9 @@ meshtastic_test_setup()
 meshtastic_test_use_mock_lora()
 
 target_sources(app PRIVATE
+  src/channel_psk.c
   src/commands.c
+  src/names.c
+  src/nodedb_show.c
   src/shell_fixture.c
 )
