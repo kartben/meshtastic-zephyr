@@ -1,0 +1,19 @@
+common:
+  tags:
+    - meshtastic
+    - mqtt
+    - native_sim
+  harness: pytest
+  extra_configs:
+    # Put the shell on stdin/stdout so the harness can drive it.
+    - arch:posix:CONFIG_UART_NATIVE_PTY_0_ON_STDINOUT=y
+  harness_config:
+    pytest_root:
+      - pytest
+    pytest_dut_scope: session
+  integration_platforms:
+    - native_sim/native/64
+  platform_allow:
+    - native_sim/native/64
+tests:
+  meshtastic.mqtt.native_sim: {}
