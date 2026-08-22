@@ -278,7 +278,6 @@ MESHTASTIC_MODULE_DEFINE(position, MESHTASTIC_PORT_POSITION, 0,
 #if defined(CONFIG_MESHTASTIC_GNSS_AUTO_SEND)
 K_THREAD_STACK_DEFINE(gnss_send_wq_stack, CONFIG_MESHTASTIC_GNSS_SEND_WORK_STACK_SIZE);
 static struct k_work_q gnss_send_wq;
-#endif
 
 static void position_work_handler(struct k_work *work)
 {
@@ -302,34 +301,40 @@ static void position_work_handler(struct k_work *work)
 
 static K_WORK_DEFINE(position_send_work, position_work_handler);
 
+/* Called with the state lock held. */
+static void position_perhaps_auto_send(int64_t now)
+{
+	const int64_t send_interval_ms =
+		(int64_t)CONFIG_MESHTASTIC_GNSS_SEND_INTERVAL_SEC * MSEC_PER_SEC;
+	const int64_t retry_interval_ms =
+		(int64_t)CONFIG_MESHTASTIC_GNSS_RETRY_INTERVAL_SEC * MSEC_PER_SEC;
+
+	if ((now - gnss_state.last_sent_ms) < send_interval_ms ||
+	    (now - gnss_state.last_attempt_ms) < retry_interval_ms ||
+	    k_work_busy_get(&position_send_work) != 0) {
+		return;
+	}
+
+	gnss_state.last_attempt_ms = now;
+	k_work_submit_to_queue(&gnss_send_wq, &position_send_work);
+}
+#else
+static void position_perhaps_auto_send(int64_t now)
+{
+	ARG_UNUSED(now);
+}
+#endif /* CONFIG_MESHTASTIC_GNSS_AUTO_SEND */
+
 static void gnss_data_cb(const struct device *dev, const struct gnss_data *data)
 {
-	int64_t now;
-	int64_t send_interval_ms;
-	int64_t retry_interval_ms;
-	bool due;
-	bool can_retry;
-
 	if (dev != gnss_dev || data == NULL || data->info.fix_status == GNSS_FIX_STATUS_NO_FIX) {
 		return;
 	}
 
-	send_interval_ms = (int64_t)CONFIG_MESHTASTIC_GNSS_SEND_INTERVAL_SEC * MSEC_PER_SEC;
-	retry_interval_ms = (int64_t)CONFIG_MESHTASTIC_GNSS_RETRY_INTERVAL_SEC * MSEC_PER_SEC;
-
 	k_mutex_lock(&gnss_state.lock, K_FOREVER);
 	gnss_state.data = *data;
 	gnss_state.has_fix = true;
-	now = k_uptime_get();
-
-	due = (now - gnss_state.last_sent_ms) >= send_interval_ms;
-	can_retry = (now - gnss_state.last_attempt_ms) >= retry_interval_ms;
-
-	if (IS_ENABLED(CONFIG_MESHTASTIC_GNSS_AUTO_SEND) && due && can_retry &&
-	    !k_work_busy_get(&position_send_work)) {
-		gnss_state.last_attempt_ms = now;
-		k_work_submit_to_queue(&gnss_send_wq, &position_send_work);
-	}
+	position_perhaps_auto_send(k_uptime_get());
 	k_mutex_unlock(&gnss_state.lock);
 
 	meshtastic_emit_event(MESHTASTIC_EVENT_GNSS_FIX, 0, NULL);
@@ -347,11 +352,11 @@ int meshtastic_gnss_init(void)
 		-((int64_t)CONFIG_MESHTASTIC_GNSS_RETRY_INTERVAL_SEC * MSEC_PER_SEC);
 
 #if MESHTASTIC_HAS_GNSS_ALIAS
-	if (IS_ENABLED(CONFIG_MESHTASTIC_GNSS_AUTO_SEND)) {
-		k_work_queue_start(&gnss_send_wq, gnss_send_wq_stack,
-				   K_THREAD_STACK_SIZEOF(gnss_send_wq_stack),
-				   CONFIG_MESHTASTIC_GNSS_SEND_WORK_PRIORITY, NULL);
-	}
+#if defined(CONFIG_MESHTASTIC_GNSS_AUTO_SEND)
+	k_work_queue_start(&gnss_send_wq, gnss_send_wq_stack,
+			   K_THREAD_STACK_SIZEOF(gnss_send_wq_stack),
+			   CONFIG_MESHTASTIC_GNSS_SEND_WORK_PRIORITY, NULL);
+#endif
 
 	if (!device_is_ready(gnss_dev)) {
 		LOG_WRN("GNSS alias exists but device is not ready");
