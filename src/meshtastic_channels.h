@@ -117,12 +117,13 @@ int meshtastic_channels_set_slot(uint8_t index, const meshtastic_Channel *channe
  * @brief Obtain the normalized AES key for a channel slot.
  *
  * Expands 1-byte short PSK indices, falls back to the primary key for SECONDARY slots with empty
- * PSK, and leaves @p key->len at 0 for cleartext PRIMARY channels.
+ * PSK, and leaves @p key->len at 0 for cleartext PRIMARY channels. A key that is neither AES-128
+ * nor AES-256 sized is zero-padded up to the next size, as upstream does.
  *
  * @param index Slot index.
  * @param key Output key buffer (must not be @c NULL).
- * @return 0 on success, @c -EINVAL for bad arguments or invalid key size,
- *         @c -ENOENT if the slot is disabled or missing settings.
+ * @return 0 on success, @c -EINVAL for bad arguments, @c -ENOENT if the slot is disabled or
+ *         missing settings.
  */
 int meshtastic_channels_get_key(uint8_t index, struct meshtastic_channel_key *key);
 

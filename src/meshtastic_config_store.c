@@ -278,8 +278,11 @@ static bool channel_is_valid(const meshtastic_Channel *channel)
 		return false;
 	}
 
-	if (channel->settings.psk.size != 0U && channel->settings.psk.size != 1U &&
-	    channel->settings.psk.size != 16U && channel->settings.psk.size != 32U) {
+	/*
+	 * Any length up to the protobuf maximum is accepted; short keys are
+	 * zero-padded when they are expanded, as upstream does.
+	 */
+	if (channel->settings.psk.size > sizeof(channel->settings.psk.bytes)) {
 		return false;
 	}
 
