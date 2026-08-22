@@ -282,6 +282,8 @@ static int mqtt_encode_envelope(const meshtastic_MeshPacket *mesh, const char *c
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_MESHTASTIC_MQTT_MAP_REPORT)
+/* Only the map report publishes an already-encoded payload. */
 static void mqtt_queue_publish(const char *topic, const uint8_t *payload, size_t len)
 {
 	struct mqtt_pub_entry entry;
@@ -316,6 +318,7 @@ static void mqtt_queue_publish(const char *topic, const uint8_t *payload, size_t
 	k_mutex_unlock(&mqtt_ctx.lock);
 	mqtt_work_notify();
 }
+#endif /* CONFIG_MESHTASTIC_MQTT_MAP_REPORT */
 
 static int mqtt_do_publish(const char *topic, const uint8_t *payload, size_t len)
 {
