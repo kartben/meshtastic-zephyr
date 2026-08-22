@@ -36,14 +36,6 @@ LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 #define MESHTASTIC_SERIAL_CONFIGURE_DEFAULT_BAUD 0
 #endif
 
-enum meshtastic_serial_parse_state {
-	MESHTASTIC_SERIAL_WAIT_START1,
-	MESHTASTIC_SERIAL_WAIT_START2,
-	MESHTASTIC_SERIAL_LEN_HI,
-	MESHTASTIC_SERIAL_LEN_LO,
-	MESHTASTIC_SERIAL_PAYLOAD,
-};
-
 RING_BUF_DECLARE(serial_rx_rb, CONFIG_MESHTASTIC_SERIAL_RX_BUF_SIZE);
 RING_BUF_DECLARE(serial_tx_rb, CONFIG_MESHTASTIC_SERIAL_TX_BUF_SIZE);
 
@@ -55,9 +47,6 @@ static struct {
 	struct k_work rx_work;
 	struct k_work tx_work;
 	struct k_work tx_cont_work;
-	enum meshtastic_serial_parse_state state;
-	uint16_t rx_len;
-	uint16_t rx_pos;
 	uint8_t rx_payload[MESHTASTIC_API_FRAME_MAX];
 	atomic_t rx_overflow;
 } serial = {
@@ -81,59 +70,6 @@ size_t meshtastic_serial_encode_frame(const uint8_t *payload, size_t payload_len
 	memcpy(&out[MESHTASTIC_SERIAL_HEADER], payload, payload_len);
 
 	return payload_len + MESHTASTIC_SERIAL_HEADER;
-}
-
-int meshtastic_serial_decode_byte(uint8_t byte, uint8_t *payload, size_t payload_len,
-				  size_t *frame_len)
-{
-	*frame_len = 0U;
-
-	switch (serial.state) {
-	case MESHTASTIC_SERIAL_WAIT_START1:
-		if (byte == MESHTASTIC_SERIAL_START1) {
-			serial.state = MESHTASTIC_SERIAL_WAIT_START2;
-		}
-		break;
-	case MESHTASTIC_SERIAL_WAIT_START2:
-		if (byte == MESHTASTIC_SERIAL_START2) {
-			serial.state = MESHTASTIC_SERIAL_LEN_HI;
-		} else if (byte == MESHTASTIC_SERIAL_START1) {
-			/* Stay in WAIT_START2 for the matching START2. */
-		} else {
-			serial.state = MESHTASTIC_SERIAL_WAIT_START1;
-		}
-		break;
-	case MESHTASTIC_SERIAL_LEN_HI:
-		serial.rx_len = ((uint16_t)byte) << 8;
-		serial.state = MESHTASTIC_SERIAL_LEN_LO;
-		break;
-	case MESHTASTIC_SERIAL_LEN_LO:
-		serial.rx_len |= byte;
-		serial.rx_pos = 0U;
-		if (serial.rx_len > MESHTASTIC_API_FRAME_MAX || serial.rx_len > payload_len) {
-			serial.state = MESHTASTIC_SERIAL_WAIT_START1;
-			return -EMSGSIZE;
-		}
-		if (serial.rx_len == 0U) {
-			serial.state = MESHTASTIC_SERIAL_WAIT_START1;
-			return 1;
-		}
-		serial.state = MESHTASTIC_SERIAL_PAYLOAD;
-		break;
-	case MESHTASTIC_SERIAL_PAYLOAD:
-		payload[serial.rx_pos++] = byte;
-		if (serial.rx_pos == serial.rx_len) {
-			*frame_len = serial.rx_len;
-			serial.state = MESHTASTIC_SERIAL_WAIT_START1;
-			return 1;
-		}
-		break;
-	default:
-		serial.state = MESHTASTIC_SERIAL_WAIT_START1;
-		break;
-	}
-
-	return 0;
 }
 
 static bool pop_fromradio(struct meshtastic_phoneapi_frame *frame)
