@@ -67,6 +67,7 @@ jobs:
             if [ -f twister-out/ztest.json ]; then
               TRACE_ARGS+=(--add-tracefile twister-out/ztest.json)
             fi
+            mkdir -p coverage-html
             gcovr -r . -v --merge-mode-functions=separate \
               --gcov-object-directory twister-out \
               "${TRACE_ARGS[@]}" \
