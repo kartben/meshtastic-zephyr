@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include <zephyr/device.h>
-#include <zephyr/drivers/lora.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/ztest.h>
@@ -16,120 +15,11 @@
 #include "meshtastic_reliable.h"
 #include "meshtastic_router.h"
 
+#include "mock_lora.h"
+
 #define TEST_NODE_ID  0x12345678U
 #define PEER_NODE_ID  0x87654321U
 #define OTHER_NODE_ID 0x13572468U
-
-struct mock_lora_state {
-	struct k_mutex lock;
-	struct lora_modem_config config;
-	lora_recv_cb rx_cb;
-	void *rx_user_data;
-	int send_result;
-	uint32_t send_count;
-	uint32_t config_count;
-	uint8_t last_tx[MESHTASTIC_PKT_MAX];
-	uint32_t last_tx_len;
-};
-
-static struct mock_lora_state mock_lora;
-
-static int mock_lora_init(const struct device *dev)
-{
-	ARG_UNUSED(dev);
-
-	k_mutex_init(&mock_lora.lock);
-	mock_lora.send_result = 0;
-
-	return 0;
-}
-
-static int mock_lora_config(const struct device *dev, const struct lora_modem_config *config)
-{
-	ARG_UNUSED(dev);
-
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	mock_lora.config = *config;
-	mock_lora.config_count++;
-	k_mutex_unlock(&mock_lora.lock);
-
-	return 0;
-}
-
-static uint32_t mock_lora_airtime(const struct device *dev, uint32_t data_len)
-{
-	ARG_UNUSED(dev);
-
-	return data_len;
-}
-
-static int mock_lora_send(const struct device *dev, uint8_t *data, uint32_t data_len)
-{
-	int ret;
-
-	ARG_UNUSED(dev);
-
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	zassert_true(data_len <= sizeof(mock_lora.last_tx), "unexpected tx len %u", data_len);
-	memcpy(mock_lora.last_tx, data, data_len);
-	mock_lora.last_tx_len = data_len;
-	mock_lora.send_count++;
-	ret = mock_lora.send_result;
-	k_mutex_unlock(&mock_lora.lock);
-
-	return ret;
-}
-
-static int mock_lora_send_async(const struct device *dev, uint8_t *data, uint32_t data_len,
-				struct k_poll_signal *async)
-{
-	int ret = mock_lora_send(dev, data, data_len);
-
-	if (async != NULL) {
-		k_poll_signal_raise(async, ret);
-	}
-
-	return ret;
-}
-
-static int mock_lora_recv(const struct device *dev, uint8_t *data, uint8_t size,
-			  k_timeout_t timeout, int16_t *rssi, int8_t *snr)
-{
-	ARG_UNUSED(dev);
-	ARG_UNUSED(data);
-	ARG_UNUSED(size);
-	ARG_UNUSED(timeout);
-	ARG_UNUSED(rssi);
-	ARG_UNUSED(snr);
-
-	return -ENOTSUP;
-}
-
-static int mock_lora_recv_async(const struct device *dev, lora_recv_cb cb, void *user_data)
-{
-	ARG_UNUSED(dev);
-
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	mock_lora.rx_cb = cb;
-	mock_lora.rx_user_data = user_data;
-	k_mutex_unlock(&mock_lora.lock);
-
-	return 0;
-}
-
-static DEVICE_API(lora, mock_lora_api) = {
-	.config = mock_lora_config,
-	.airtime = mock_lora_airtime,
-	.send = mock_lora_send,
-	.send_async = mock_lora_send_async,
-	.recv = mock_lora_recv,
-	.recv_async = mock_lora_recv_async,
-};
-
-DEVICE_DEFINE(mock_lora, "mock_lora", mock_lora_init, NULL, NULL, NULL, POST_KERNEL,
-	      CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &mock_lora_api);
-
-static const struct device *const lora_dev = DEVICE_GET(mock_lora);
 
 struct test_state {
 	struct k_sem rx_sem;
@@ -175,25 +65,6 @@ static void reset_callbacks_state(void)
 	k_sem_reset(&state.rx_sem);
 	k_sem_reset(&state.tx_sem);
 	k_sem_reset(&state.ack_sem);
-}
-
-static void reset_mock_lora(void)
-{
-	lora_recv_cb rx_cb;
-	void *rx_user_data;
-
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	rx_cb = mock_lora.rx_cb;
-	rx_user_data = mock_lora.rx_user_data;
-	memset(&mock_lora.config, 0, sizeof(mock_lora.config));
-	mock_lora.rx_cb = rx_cb;
-	mock_lora.rx_user_data = rx_user_data;
-	mock_lora.send_result = 0;
-	mock_lora.send_count = 0U;
-	mock_lora.config_count = 0U;
-	mock_lora.last_tx_len = 0U;
-	memset(mock_lora.last_tx, 0, sizeof(mock_lora.last_tx));
-	k_mutex_unlock(&mock_lora.lock);
 }
 
 static void on_recv(uint32_t from, uint32_t to, uint32_t portnum, const uint8_t *payload,
@@ -253,7 +124,6 @@ static void on_event(const struct meshtastic_event *event, void *user_data)
 static void *protocol_suite_setup(void)
 {
 	static struct meshtastic_config cfg = {
-		.lora_dev = lora_dev,
 		.node_id = TEST_NODE_ID,
 		.psk = meshtastic_default_psk,
 		.psk_len = sizeof(meshtastic_default_psk),
@@ -262,11 +132,13 @@ static void *protocol_suite_setup(void)
 	};
 	int ret;
 
+	cfg.lora_dev = mock_lora_device();
+
 	k_sem_init(&state.rx_sem, 0, 1);
 	k_sem_init(&state.tx_sem, 0, 1);
 	k_sem_init(&state.ack_sem, 0, 1);
 
-	zassert_true(device_is_ready(lora_dev), "mock lora device not ready");
+	zassert_true(device_is_ready(mock_lora_device()), "mock lora device not ready");
 
 	ret = meshtastic_init(&cfg);
 	zassert_ok(ret, "meshtastic_init failed: %d", ret);
@@ -274,7 +146,7 @@ static void *protocol_suite_setup(void)
 	meshtastic_set_recv_cb(on_recv);
 	meshtastic_set_event_cb(on_event, NULL);
 
-	reset_mock_lora();
+	mock_lora_reset();
 	reset_callbacks_state();
 
 	return NULL;
@@ -289,7 +161,7 @@ static void protocol_before(void *fixture)
 	mt.dup_head = 0U;
 	/* Leftover entries would retransmit into the next test's send counts. */
 	meshtastic_reliable_reset();
-	reset_mock_lora();
+	mock_lora_reset();
 	reset_callbacks_state();
 }
 
@@ -325,16 +197,7 @@ static void assert_event_payload(const void *expected, size_t expected_len)
 
 static void assert_mock_send_count(uint32_t expected)
 {
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	zassert_equal(mock_lora.send_count, expected, "unexpected lora_send count");
-	k_mutex_unlock(&mock_lora.lock);
-}
-
-static void set_mock_send_result(int send_result)
-{
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	mock_lora.send_result = send_result;
-	k_mutex_unlock(&mock_lora.lock);
+	zassert_equal(mock_lora_send_count(), expected, "unexpected lora_send count");
 }
 
 static void build_wire_packet(uint32_t from, uint32_t to, uint32_t id, uint8_t hop_limit,
@@ -371,12 +234,9 @@ static void decode_last_tx(struct meshtastic_packet *decoded, uint8_t *payload, 
 	uint32_t wire_len;
 	int ret;
 
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	zassert_equal(mock_lora.send_count, 1U, "expected one lora_send call");
-	zassert_true(mock_lora.last_tx_len > MESHTASTIC_HDR_LEN, "expected wire payload");
-	wire_len = mock_lora.last_tx_len;
-	memcpy(wire, mock_lora.last_tx, wire_len);
-	k_mutex_unlock(&mock_lora.lock);
+	assert_mock_send_count(1U);
+	wire_len = mock_lora_last_tx(wire, sizeof(wire));
+	zassert_true(wire_len > MESHTASTIC_HDR_LEN, "expected wire payload");
 
 	ret = meshtastic_decode_wire_packet(wire, wire_len, 0, 0, decoded, payload, payload_len);
 	zassert_ok(ret, "meshtastic_decode_wire_packet failed: %d", ret);
@@ -384,10 +244,11 @@ static void decode_last_tx(struct meshtastic_packet *decoded, uint8_t *payload, 
 
 static void copy_last_tx_header(struct meshtastic_wire_header *hdr)
 {
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	zassert_true(mock_lora.last_tx_len >= MESHTASTIC_HDR_LEN, "expected tx header");
-	memcpy(hdr, mock_lora.last_tx, sizeof(*hdr));
-	k_mutex_unlock(&mock_lora.lock);
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+
+	zassert_true(mock_lora_last_tx(wire, sizeof(wire)) >= MESHTASTIC_HDR_LEN,
+		     "expected tx header");
+	memcpy(hdr, wire, sizeof(*hdr));
 }
 
 static void assert_wire_header(const struct meshtastic_wire_header *hdr, uint32_t from, uint32_t to,
@@ -411,53 +272,6 @@ static void assert_wire_header(const struct meshtastic_wire_header *hdr, uint32_
 		      "unexpected channel hash");
 	zassert_equal(hdr->next_hop, next_hop, "unexpected next hop");
 	zassert_equal(hdr->relay_node, relay_node, "unexpected relay node");
-}
-
-static void inject_rx_frame(const uint8_t *wire, uint32_t wire_len, int16_t rssi, int8_t snr)
-{
-	lora_recv_cb cb;
-	void *user_data;
-	uint8_t frame[MESHTASTIC_PKT_MAX];
-
-	zassert_true(wire_len <= sizeof(frame), "unexpected rx len %u", wire_len);
-
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	cb = mock_lora.rx_cb;
-	user_data = mock_lora.rx_user_data;
-	k_mutex_unlock(&mock_lora.lock);
-
-	zassert_not_null(cb, "rx callback not armed");
-
-	memcpy(frame, wire, wire_len);
-	cb(lora_dev, frame, wire_len, rssi, snr, user_data);
-}
-
-static void wait_for_send_count(uint32_t expected, int timeout_ms)
-{
-	int64_t deadline = k_uptime_get() + timeout_ms;
-	uint32_t count = 0U;
-
-	while (k_uptime_get() <= deadline) {
-		k_mutex_lock(&mock_lora.lock, K_FOREVER);
-		count = mock_lora.send_count;
-		k_mutex_unlock(&mock_lora.lock);
-
-		if (count >= expected) {
-			return;
-		}
-
-		k_sleep(K_MSEC(10));
-	}
-
-	zassert_unreachable("timed out waiting for %u lora_send calls (saw %u)", expected, count);
-}
-
-static void copy_last_tx(uint8_t *wire, uint32_t *wire_len)
-{
-	k_mutex_lock(&mock_lora.lock, K_FOREVER);
-	*wire_len = mock_lora.last_tx_len;
-	memcpy(wire, mock_lora.last_tx, mock_lora.last_tx_len);
-	k_mutex_unlock(&mock_lora.lock);
 }
 
 /* Builds a peer packet that asks this node to acknowledge it. */
@@ -672,7 +486,7 @@ ZTEST(protocol_stack, test_radio_send_failure_emits_failed_event)
 	ret = meshtastic_get_status(&before);
 	zassert_ok(ret, "status read failed: %d", ret);
 
-	set_mock_send_result(-EIO);
+	mock_lora_set_send_result(-EIO);
 	ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST, "fail");
 	zassert_equal(ret, -EIO, "send should return mock radio failure");
 	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for failure event");
@@ -821,7 +635,7 @@ ZTEST(protocol_stack, test_mock_radio_receive_delivers_packet)
 	zassert_ok(ret, "status read failed: %d", ret);
 
 	build_peer_wire_packet(TEST_NODE_ID, 0x1001U, 3U, "pong", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -42, 7);
+	mock_lora_inject_rx(wire, wire_len, -42, 7);
 
 	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for rx callback");
 	zassert_equal(state.recv_count, 1U, "expected one delivery");
@@ -849,7 +663,7 @@ ZTEST(protocol_stack, test_too_short_rx_frame_is_ignored)
 	ret = meshtastic_get_status(&before);
 	zassert_ok(ret, "status read failed: %d", ret);
 
-	inject_rx_frame(wire, sizeof(wire), -10, 1);
+	mock_lora_inject_rx(wire, sizeof(wire), -10, 1);
 	k_sleep(K_MSEC(100));
 
 	zassert_equal(state.recv_count, 0U, "short frame should not be delivered");
@@ -876,7 +690,7 @@ ZTEST(protocol_stack, test_unknown_channel_hash_counts_decode_failure_without_de
 	build_peer_wire_packet(TEST_NODE_ID, 0x5404U, 3U, "badch", wire, &wire_len);
 	hdr = (struct meshtastic_wire_header *)wire;
 	hdr->channel ^= 0xffU;
-	inject_rx_frame(wire, wire_len, -20, 4);
+	mock_lora_inject_rx(wire, wire_len, -20, 4);
 	k_sleep(K_MSEC(100));
 
 	zassert_equal(state.recv_count, 0U, "undecodable packet should not be delivered");
@@ -894,7 +708,7 @@ ZTEST(protocol_stack, test_broadcast_rx_packet_is_delivered_locally)
 	uint32_t wire_len;
 
 	build_peer_wire_packet(MESHTASTIC_NODE_BROADCAST, 0x5505U, 0U, "all", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -33, 6);
+	mock_lora_inject_rx(wire, wire_len, -33, 6);
 
 	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for rx callback");
 	zassert_equal(state.recv_count, 1U, "expected one delivery");
@@ -915,10 +729,10 @@ ZTEST(protocol_stack, test_duplicate_packets_are_suppressed)
 	zassert_ok(ret, "status read failed: %d", ret);
 
 	build_peer_wire_packet(TEST_NODE_ID, 0x2002U, 3U, "dupe", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -30, 5);
+	mock_lora_inject_rx(wire, wire_len, -30, 5);
 	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for first rx");
 
-	inject_rx_frame(wire, wire_len, -30, 5);
+	mock_lora_inject_rx(wire, wire_len, -30, 5);
 	zassert_equal(-EAGAIN, k_sem_take(&state.rx_sem, K_MSEC(100)),
 		      "duplicate unexpectedly delivered");
 
@@ -942,12 +756,12 @@ ZTEST(protocol_stack, test_duplicate_foreign_packets_do_not_relay_again)
 	zassert_ok(ret, "status read failed: %d", ret);
 
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5606U, 3U, "relay-once", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -35, 4);
+	mock_lora_inject_rx(wire, wire_len, -35, 4);
 	k_sleep(K_MSEC(100));
 	assert_mock_send_count(1U);
 
-	reset_mock_lora();
-	inject_rx_frame(wire, wire_len, -35, 4);
+	mock_lora_reset();
+	mock_lora_inject_rx(wire, wire_len, -35, 4);
 	k_sleep(K_MSEC(100));
 
 	assert_mock_send_count(0U);
@@ -972,7 +786,7 @@ ZTEST(protocol_stack, test_foreign_unicast_is_relayed_with_decremented_hop_limit
 	zassert_ok(ret, "status read failed: %d", ret);
 
 	build_peer_wire_packet(OTHER_NODE_ID, 0x3003U, 3U, "relay", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -55, 2);
+	mock_lora_inject_rx(wire, wire_len, -55, 2);
 	k_sleep(K_MSEC(100));
 
 	assert_mock_send_count(1U);
@@ -994,7 +808,7 @@ ZTEST(protocol_stack, test_foreign_unicast_with_zero_hop_limit_is_not_relayed)
 	uint32_t wire_len;
 
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5707U, 0U, "terminal", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -48, 2);
+	mock_lora_inject_rx(wire, wire_len, -48, 2);
 	k_sleep(K_MSEC(100));
 
 	assert_mock_send_count(0U);
@@ -1015,15 +829,15 @@ ZTEST(protocol_stack, test_rebroadcast_policy_can_suppress_foreign_relay)
 
 	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_NONE);
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5808U, 3U, "none", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -45, 2);
+	mock_lora_inject_rx(wire, wire_len, -45, 2);
 	k_sleep(K_MSEC(100));
 	assert_mock_send_count(0U);
 
-	reset_mock_lora();
+	mock_lora_reset();
 	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_ALL);
 	meshtastic_set_device_role(meshtastic_Config_DeviceConfig_Role_CLIENT_MUTE);
 	build_peer_wire_packet(OTHER_NODE_ID, 0x5809U, 3U, "mute", wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -45, 2);
+	mock_lora_inject_rx(wire, wire_len, -45, 2);
 	k_sleep(K_MSEC(100));
 	assert_mock_send_count(0U);
 
@@ -1110,7 +924,7 @@ ZTEST(protocol_stack, test_duplicate_downlink_returns_ealready)
 	ret = meshtastic_inject_downlink_mesh_packet(&mesh);
 	zassert_ok(ret, "first downlink inject failed: %d", ret);
 
-	reset_mock_lora();
+	mock_lora_reset();
 	reset_callbacks_state();
 	ret = meshtastic_inject_downlink_mesh_packet(&mesh);
 	zassert_equal(ret, -EALREADY, "duplicate downlink should return -EALREADY");
@@ -1130,7 +944,7 @@ ZTEST(protocol_stack, test_want_ack_unicast_is_settled_by_routing_ack)
 	zassert_equal(meshtastic_reliable_pending(), 1U, "packet was not tracked");
 
 	build_routing_reply_wire(0x0AC00001U, id, meshtastic_Routing_Error_NONE, wire, &wire_len);
-	inject_rx_frame(wire, wire_len, -20, 5);
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
 
 	zassert_ok(k_sem_take(&state.ack_sem, K_SECONDS(1)), "timed out waiting for ack event");
 	zassert_equal(state.last_ack_type, MESHTASTIC_EVENT_TX_ACKED, "expected TX_ACKED");
@@ -1170,7 +984,7 @@ ZTEST(protocol_stack, test_routing_error_reports_delivery_failure)
 
 	build_routing_reply_wire(0x0AC00002U, id, meshtastic_Routing_Error_NO_ROUTE, wire,
 				 &wire_len);
-	inject_rx_frame(wire, wire_len, -20, 5);
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
 
 	zassert_ok(k_sem_take(&state.ack_sem, K_SECONDS(1)), "timed out waiting for ack event");
 	zassert_equal(state.last_ack_type, MESHTASTIC_EVENT_TX_NO_ACK, "expected TX_NO_ACK");
@@ -1191,11 +1005,11 @@ ZTEST(protocol_stack, test_unacknowledged_packet_is_retransmitted_then_reported)
 
 	id = send_want_ack_unicast("retry");
 	assert_mock_send_count(1U);
-	copy_last_tx(first, &first_len);
+	first_len = mock_lora_last_tx(first, sizeof(first));
 
 	/* The test build configures one retransmission, roughly one second out. */
-	wait_for_send_count(2U, 3000);
-	copy_last_tx(retry, &retry_len);
+	mock_lora_wait_for_send_count(2U, K_MSEC(3000));
+	retry_len = mock_lora_last_tx(retry, sizeof(retry));
 
 	/*
 	 * The retry must reuse the original packet ID and frame: that is what
@@ -1223,12 +1037,12 @@ ZTEST(protocol_stack, test_duplicate_want_ack_packet_is_acknowledged_again)
 
 	build_peer_want_ack_wire(0x0DEF0001U, "hi", wire, &wire_len);
 
-	inject_rx_frame(wire, wire_len, -20, 5);
-	wait_for_send_count(1U, 1000);
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	mock_lora_wait_for_send_count(1U, K_MSEC(1000));
 	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for delivery");
 
 	/* The same frame again: suppressed as a duplicate, but still acknowledged. */
-	inject_rx_frame(wire, wire_len, -20, 5);
-	wait_for_send_count(2U, 1000);
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	mock_lora_wait_for_send_count(2U, K_MSEC(1000));
 	zassert_equal(state.recv_count, 1U, "duplicate must not be delivered twice");
 }
