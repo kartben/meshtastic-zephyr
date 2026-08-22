@@ -41,14 +41,14 @@ jobs:
           toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
           ccache-cache-key: ${{ matrix.os }}
 
-      - name: Run protocol tests
+      - name: Run tests
         id: protocol_tests
         working-directory: meshtastic-zephyr
         shell: bash
         env:
           ZEPHYR_TOOLCHAIN_VARIANT: zephyr
         run: |
-          TWISTER_ARGS="-T tests/protocol -p native_sim/native/64 -v --inline-logs"
+          TWISTER_ARGS="-T tests -p native_sim/native/64 -v --inline-logs"
           if [ "${{ runner.os }}" = "Linux" ]; then
             west twister ${TWISTER_ARGS} \
               --coverage --coverage-tool gcovr --coverage-basedir .
