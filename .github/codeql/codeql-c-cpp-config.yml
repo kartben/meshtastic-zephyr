@@ -1,0 +1,11 @@
+# CodeQL configuration for the "c-cpp" language.
+#
+# Building the Meshtastic module necessarily compiles Zephyr, its west modules
+# and the nanopb sources generated from src/proto as well, so the database
+# covers far more than this repository. Restrict the results to the code that
+# is actually maintained here; upstream findings belong in upstream trackers.
+paths:
+  - src
+  - include
+  - samples
+  - tests

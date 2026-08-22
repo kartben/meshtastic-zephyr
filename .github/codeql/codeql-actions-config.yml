@@ -1,0 +1,4 @@
+# CodeQL configuration for the "actions" language: only this repository's own
+# workflows and actions are of interest.
+paths:
+  - .github

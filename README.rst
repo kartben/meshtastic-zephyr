@@ -213,6 +213,30 @@ Build the Meshtastic sample with:
 Refer to the `sample's README <samples/meshtastic/README.rst>`_ for more information on how to build
 and run the sample and enable additional features.
 
+Static analysis
+***************
+
+Two analyses run in CI on every pull request, on pushes to ``main`` and on a weekly schedule, and
+report into the repository's `code scanning alerts
+<https://github.com/kartben/meshtastic-zephyr/security/code-scanning>`_:
+
+* **GCC static analyzer** (``.github/workflows/sca.yml``), through Zephyr's `SCA infrastructure
+  <https://docs.zephyrproject.org/latest/develop/sca/gcc.html>`_. To reproduce a finding locally:
+
+  .. code-block:: console
+
+     $ west build -b native_sim/native/64 tests/protocol -- \
+         -DZEPHYR_SCA_VARIANT=gcc -DGCC_COMPILER_VERSION=$(gcc -dumpfullversion)
+
+  ``GCC_COMPILER_VERSION`` is only needed for ``native_sim`` and other host builds, where Zephyr
+  uses the host compiler without exporting its version to the SCA version check.
+
+* **CodeQL** (``.github/workflows/codeql.yml``) on the C sources and on the GitHub Actions
+  workflows.
+
+Both analyses only see code that is actually compiled, so a subsystem that no build in CI enables
+(Bluetooth, MQTT, GNSS and the shell commands, at the time of writing) is not covered.
+
 Documentation
 *************
 
