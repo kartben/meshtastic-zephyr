@@ -123,6 +123,7 @@ int meshtastic_radio_send_wire_now(uint8_t *pkt, uint32_t pkt_len)
 	k_mutex_lock(&mt.lock, K_FOREVER);
 
 	mt_lora_cfg.frequency = mt.frequency;
+	mt_lora_cfg.datarate = (enum lora_datarate)mt.spread_factor;
 	mt_lora_cfg.tx_power = mt.tx_power;
 	mt_lora_cfg.tx = true;
 	mt_lora_cfg.cad.mode = LORA_CAD_MODE_LBT;
@@ -238,6 +239,7 @@ int meshtastic_radio_init(void)
 	int ret;
 
 	mt_lora_cfg.frequency = mt.frequency;
+	mt_lora_cfg.datarate = (enum lora_datarate)mt.spread_factor;
 	mt_lora_cfg.tx_power = mt.tx_power;
 	mt_lora_cfg.tx = false;
 

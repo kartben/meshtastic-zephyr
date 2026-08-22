@@ -278,6 +278,14 @@ struct meshtastic_config {
 	uint32_t frequency;
 
 	/**
+	 * LoRa spreading factor (7–12).  0 → SF 11 (LongFast).
+	 * Together with the fixed BW 250 kHz / CR 4/5 this selects the
+	 * Meshtastic modem preset: 11 = LongFast, 10 = MediumSlow,
+	 * 9 = MediumFast, 7 = ShortFast.
+	 */
+	uint8_t spread_factor;
+
+	/**
 	 * Hop limit written into outgoing packet headers (1–7).
 	 * 0 → use @kconfig{CONFIG_MESHTASTIC_DEFAULT_HOP_LIMIT}.
 	 */

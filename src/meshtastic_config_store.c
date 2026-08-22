@@ -171,6 +171,29 @@ static int index_for_module_name(const char *name)
 	return -ENOENT;
 }
 
+/* Map the configured spreading factor to the official Meshtastic modem
+ * preset. SF 7-11 map exactly: per the reference firmware's
+ * modemPresetToParams(), SHORT_FAST through LONG_FAST all run BW 250 kHz /
+ * CR 4/5, which is precisely what this stack transmits. SF 12 is the one
+ * gap (LONG_SLOW is BW 125 / CR 4/8) and is handled by the caller with
+ * use_preset = false.
+ */
+static meshtastic_Config_LoRaConfig_ModemPreset modem_preset_from_sf(void)
+{
+	switch (mt.spread_factor) {
+	case 7U:
+		return meshtastic_Config_LoRaConfig_ModemPreset_SHORT_FAST;
+	case 8U:
+		return meshtastic_Config_LoRaConfig_ModemPreset_SHORT_SLOW;
+	case 9U:
+		return meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_FAST;
+	case 10U:
+		return meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_SLOW;
+	default:
+		return meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+	}
+}
+
 static meshtastic_Config_LoRaConfig_RegionCode lora_region_from_frequency(uint32_t hz)
 {
 	if (hz >= 902000000U && hz <= 928000000U) {
@@ -349,13 +372,27 @@ static void seed_config_defaults(const struct meshtastic_config *cfg)
 			: meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT;
 
 	idx = index_for_config_tag(meshtastic_Config_lora_tag);
-	store.configs[idx].payload_variant.lora.use_preset = true;
-	store.configs[idx].payload_variant.lora.modem_preset =
-		meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+	if (mt.spread_factor == 12U) {
+		/* SF 12 at BW 250 kHz matches no official preset: report the
+		 * explicit parameters instead of lying about the preset.
+		 */
+		store.configs[idx].payload_variant.lora.use_preset = false;
+		store.configs[idx].payload_variant.lora.spread_factor = 12U;
+		store.configs[idx].payload_variant.lora.bandwidth = 250U;
+		store.configs[idx].payload_variant.lora.coding_rate = 5U;
+	} else {
+		store.configs[idx].payload_variant.lora.use_preset = true;
+		store.configs[idx].payload_variant.lora.modem_preset = modem_preset_from_sf();
+	}
 	store.configs[idx].payload_variant.lora.region = lora_region_from_frequency(cfg->frequency);
 	store.configs[idx].payload_variant.lora.hop_limit = mt.hop_limit;
 	store.configs[idx].payload_variant.lora.tx_enabled = true;
 	store.configs[idx].payload_variant.lora.tx_power = mt.tx_power;
+	/* Persist the exact carrier so a custom slot survives the
+	 * region-granular round trip in config_store_load().
+	 */
+	store.configs[idx].payload_variant.lora.override_frequency =
+		(float)mt.frequency / 1000000.0f;
 
 	idx = index_for_config_tag(meshtastic_Config_bluetooth_tag);
 	store.configs[idx].payload_variant.bluetooth.enabled = IS_ENABLED(CONFIG_MESHTASTIC_BLE);

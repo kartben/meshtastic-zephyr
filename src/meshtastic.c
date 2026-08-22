@@ -234,6 +234,12 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 		return -EINVAL;
 	}
 
+	if (cfg->spread_factor != 0U &&
+	    (cfg->spread_factor < 7U || cfg->spread_factor > 12U)) {
+		LOG_ERR("Invalid spread factor %u", cfg->spread_factor);
+		return -EINVAL;
+	}
+
 	mt.lora_dev = cfg->lora_dev;
 #if IS_ENABLED(CONFIG_MESHTASTIC_NODE_ID_CUSTOM)
 	if (cfg->node_id != 0U) {
@@ -258,6 +264,7 @@ int meshtastic_init(const struct meshtastic_config *cfg)
 	}
 
 	mt.frequency = cfg->frequency;
+	mt.spread_factor = (cfg->spread_factor == 0U) ? 11U : cfg->spread_factor;
 	mt.hop_limit = (cfg->hop_limit == 0U) ? (uint8_t)CONFIG_MESHTASTIC_DEFAULT_HOP_LIMIT
 					      : cfg->hop_limit;
 	mt.tx_power = (cfg->tx_power == 0) ? (int8_t)CONFIG_MESHTASTIC_TX_POWER : cfg->tx_power;
