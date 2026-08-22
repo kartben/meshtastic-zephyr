@@ -20,7 +20,9 @@ code scanning expects:
   of every source file in them, which alone blows past the SARIF upload size
   limit;
 * code flow steps outside the repository are pruned, so no absolute path
-  survives anywhere in the uploaded document;
+  survives anywhere in the uploaded document, as are the message-only locations
+  GCC attaches to some diagnostics (the ASCII diagram of an out-of-bounds
+  access, say), which code scanning rejects outright;
 * the CWE identifiers GCC reports through a SARIF taxonomy are re-expressed as
   ``external/cwe/cwe-NNN`` rule tags, which is the form code scanning renders;
 * diagnostics reported identically by several builds of the same sources -- one
@@ -130,6 +132,27 @@ def rewrite_locations(node, scope, base):
     return complete
 
 
+def has_physical_location(node):
+    """Whether a SARIF location carries a physical location.
+
+    GCC attaches message-only locations to some diagnostics -- the diagram of
+    an out-of-bounds access, for one -- and code scanning rejects a whole
+    submission over them ("expected physical location").
+    """
+    if isinstance(node, dict):
+        if "physicalLocation" in node:
+            return True
+        return any(has_physical_location(value) for value in node.values())
+    if isinstance(node, list):
+        return any(has_physical_location(value) for value in node)
+    return False
+
+
+def keep_location(node, scope, base):
+    """Whether to keep a location: in the repository, and actually a place."""
+    return rewrite_locations(node, scope, base) and has_physical_location(node)
+
+
 def prune_code_flows(result, scope, base):
     """Drop code flow steps that point outside the repository."""
     flows = []
@@ -137,7 +160,7 @@ def prune_code_flows(result, scope, base):
         threads = []
         for thread in flow.get("threadFlows", []):
             steps = [step for step in thread.get("locations", [])
-                     if rewrite_locations(step, scope, base)]
+                     if keep_location(step, scope, base)]
             if steps:
                 threads.append({**thread, "locations": steps})
         if threads:
@@ -214,11 +237,14 @@ def collect(args, scope, rule_prefixes):
                 prune_code_flows(result, scope, base)
                 result["relatedLocations"] = [
                     related for related in result.get("relatedLocations", [])
-                    if rewrite_locations(related, scope, base)
+                    if keep_location(related, scope, base)
                 ]
                 if not result["relatedLocations"]:
                     del result["relatedLocations"]
-                rewrite_locations(result.get("locations", []), scope, base)
+                result["locations"] = [
+                    location for location in result.get("locations", [])
+                    if keep_location(location, scope, base)
+                ]
 
                 # Code scanning renders CWE identifiers from rule tags, so
                 # translate GCC's taxonomy references and drop them.
