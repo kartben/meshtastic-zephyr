@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0
+#
+# The workflows pin third-party actions to a commit SHA, which is only worth
+# anything if something keeps the pins current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request per batch rather than one per action.
+      actions:
+        patterns:
+          - "*"
