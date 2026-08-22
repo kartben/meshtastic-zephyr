@@ -10,6 +10,7 @@
 
 #include <zephyr/drivers/lora.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 
 #include "meshtastic_airtime.h"
 #include "meshtastic_core.h"
@@ -18,10 +19,9 @@
 LOG_MODULE_DECLARE(meshtastic, CONFIG_MESHTASTIC_LOG_LEVEL);
 
 struct meshtastic_airtime_state {
-	struct k_mutex lock;
-	uint32_t channel_utilization[MESHTASTIC_CHANNEL_UTILIZATION_PERIODS];
-	uint32_t utilization_tx[MESHTASTIC_MINUTES_IN_HOUR];
-	uint32_t sec_since_boot;
+	atomic_t channel_utilization[MESHTASTIC_CHANNEL_UTILIZATION_PERIODS];
+	atomic_t utilization_tx[MESHTASTIC_MINUTES_IN_HOUR];
+	atomic_t sec_since_boot;
 	uint8_t last_util_period;
 	uint8_t last_util_period_tx;
 	bool first_tick;
@@ -35,29 +35,29 @@ K_TIMER_DEFINE(airtime_timer, airtime_timer_fn, NULL);
 
 static uint8_t period_util_minute(void)
 {
-	return (uint8_t)((airtime.sec_since_boot / 10U) % MESHTASTIC_CHANNEL_UTILIZATION_PERIODS);
+	return (uint8_t)(((uint32_t)atomic_get(&airtime.sec_since_boot) / 10U) %
+			 MESHTASTIC_CHANNEL_UTILIZATION_PERIODS);
 }
 
 static uint8_t period_util_hour(void)
 {
-	return (uint8_t)((airtime.sec_since_boot / 60U) % MESHTASTIC_MINUTES_IN_HOUR);
+	return (uint8_t)(((uint32_t)atomic_get(&airtime.sec_since_boot) / 60U) %
+			 MESHTASTIC_MINUTES_IN_HOUR);
 }
 
 static void channel_util_add(uint32_t ms)
 {
 	uint8_t idx = period_util_minute();
 
-	airtime.channel_utilization[idx] += ms;
+	atomic_add(&airtime.channel_utilization[idx], (atomic_val_t)ms);
 }
 
 void meshtastic_airtime_log(enum meshtastic_airtime_type type, uint32_t ms)
 {
-	k_mutex_lock(&airtime.lock, K_FOREVER);
-
 	switch (type) {
 	case MESHTASTIC_AIRTIME_TX:
 		LOG_DBG("Packet TX: %u ms", ms);
-		airtime.utilization_tx[period_util_hour()] += ms;
+		atomic_add(&airtime.utilization_tx[period_util_hour()], (atomic_val_t)ms);
 		channel_util_add(ms);
 		break;
 	case MESHTASTIC_AIRTIME_RX:
@@ -71,8 +71,6 @@ void meshtastic_airtime_log(enum meshtastic_airtime_type type, uint32_t ms)
 	default:
 		break;
 	}
-
-	k_mutex_unlock(&airtime.lock);
 }
 
 uint32_t meshtastic_airtime_packet_ms(uint32_t wire_len)
@@ -89,11 +87,9 @@ float meshtastic_airtime_channel_util_percent(void)
 	uint32_t sum = 0U;
 	float percent;
 
-	k_mutex_lock(&airtime.lock, K_FOREVER);
 	for (size_t i = 0; i < MESHTASTIC_CHANNEL_UTILIZATION_PERIODS; i++) {
-		sum += airtime.channel_utilization[i];
+		sum += (uint32_t)atomic_get(&airtime.channel_utilization[i]);
 	}
-	k_mutex_unlock(&airtime.lock);
 
 	percent = ((float)sum / (float)(MESHTASTIC_CHANNEL_UTILIZATION_PERIODS * 10U * 1000U)) *
 		  100.0f;
@@ -106,11 +102,9 @@ float meshtastic_airtime_tx_util_percent(void)
 	uint32_t sum = 0U;
 	float percent;
 
-	k_mutex_lock(&airtime.lock, K_FOREVER);
 	for (size_t i = 0; i < MESHTASTIC_MINUTES_IN_HOUR; i++) {
-		sum += airtime.utilization_tx[i];
+		sum += (uint32_t)atomic_get(&airtime.utilization_tx[i]);
 	}
-	k_mutex_unlock(&airtime.lock);
 
 	percent = ((float)sum / (float)MESHTASTIC_MS_IN_HOUR) * 100.0f;
 
@@ -122,9 +116,7 @@ static void meshtastic_airtime_tick(void)
 	uint8_t util_period;
 	uint8_t util_period_tx;
 
-	k_mutex_lock(&airtime.lock, K_FOREVER);
-
-	airtime.sec_since_boot++;
+	atomic_inc(&airtime.sec_since_boot);
 	util_period = period_util_minute();
 	util_period_tx = period_util_hour();
 
@@ -135,16 +127,14 @@ static void meshtastic_airtime_tick(void)
 	} else {
 		if (airtime.last_util_period != util_period) {
 			airtime.last_util_period = util_period;
-			airtime.channel_utilization[util_period] = 0U;
+			atomic_set(&airtime.channel_utilization[util_period], 0);
 		}
 
 		if (airtime.last_util_period_tx != util_period_tx) {
 			airtime.last_util_period_tx = util_period_tx;
-			airtime.utilization_tx[util_period_tx] = 0U;
+			atomic_set(&airtime.utilization_tx[util_period_tx], 0);
 		}
 	}
-
-	k_mutex_unlock(&airtime.lock);
 }
 
 static void airtime_timer_fn(struct k_timer *timer)
@@ -158,7 +148,6 @@ int meshtastic_airtime_init(void)
 {
 	memset(&airtime, 0, sizeof(airtime));
 	airtime.first_tick = true;
-	k_mutex_init(&airtime.lock);
 	k_timer_start(&airtime_timer, K_SECONDS(1), K_SECONDS(1));
 
 	return 0;
