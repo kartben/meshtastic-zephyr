@@ -55,6 +55,11 @@ jobs:
     # the build time. This job needs a west workspace around the application,
     # hence the checkout one directory below the workspace root.
     name: Analyze (c-cpp)
+    # Not on pull requests: a full Zephyr build under the CodeQL tracer takes
+    # the better part of an hour, which is too slow to hold up a review. The
+    # trade-off is that code scanning cannot annotate a pull request with C/C++
+    # alerts, so they surface on main instead.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     permissions:

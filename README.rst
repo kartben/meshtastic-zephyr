@@ -216,9 +216,10 @@ and run the sample and enable additional features.
 Static analysis
 ***************
 
-Two analyses run in CI on every pull request, on pushes to ``main`` and on a weekly schedule, and
-report into the repository's `code scanning alerts
-<https://github.com/kartben/meshtastic-zephyr/security/code-scanning>`_:
+Two analyses report into the repository's `code scanning alerts
+<https://github.com/kartben/meshtastic-zephyr/security/code-scanning>`_. Both run on pushes to
+``main`` and on a weekly schedule; on pull requests everything runs except the CodeQL C/C++
+analysis, which takes the better part of an hour and would hold up reviews:
 
 * **GCC static analyzer** (``.github/workflows/sca.yml``), through Zephyr's `SCA infrastructure
   <https://docs.zephyrproject.org/latest/develop/sca/gcc.html>`_. To reproduce a finding locally:
