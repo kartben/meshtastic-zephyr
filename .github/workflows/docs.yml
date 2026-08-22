@@ -63,20 +63,7 @@ jobs:
             mkdir -p docs/html/coverage
             cp -a coverage-html/. docs/html/coverage/
             if [ ! -f docs/html/coverage/index.html ] && [ -f docs/html/coverage/coverage_details.html ]; then
-              cat > docs/html/coverage/index.html <<'EOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url=coverage_details.html">
-  <title>Coverage report</title>
-  <link rel="canonical" href="coverage_details.html">
-</head>
-<body>
-  <p><a href="coverage_details.html">Open the coverage report</a>.</p>
-</body>
-</html>
-EOF
+              cp docs/html/coverage/coverage_details.html docs/html/coverage/index.html
             fi
             echo 'Coverage report added at `/coverage/`.' >> "${GITHUB_STEP_SUMMARY}"
           else
