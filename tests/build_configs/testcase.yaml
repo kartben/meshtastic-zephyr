@@ -1,7 +1,7 @@
 common:
-  # Compiled, never run. The modules only these configurations build (MQTT, the
-  # settings backend) therefore show up in the coverage report at 0%, which is
-  # an accurate picture of what the running suites reach.
+  # Compiled, never run. The settings backend that only this configuration
+  # builds therefore shows up in the coverage report at 0%, which is an
+  # accurate picture of what the running suites reach.
   build_only: true
   tags:
     - meshtastic
