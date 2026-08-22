@@ -41,6 +41,17 @@ jobs:
           toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
           ccache-cache-key: ${{ matrix.os }}
 
+      - name: Install MQTT test dependencies
+        shell: bash
+        run: |
+          pip install paho-mqtt grpcio-tools
+
+      - name: Install mosquitto
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosquitto
+
       - name: Run tests
         id: protocol_tests
         working-directory: meshtastic-zephyr
