@@ -327,6 +327,25 @@ ZTEST(shell_commands, test_text_send_drops_the_ack_request_on_a_broadcast)
 	zassert_false(sent.want_ack);
 }
 
+ZTEST(shell_commands, test_text_send_accepts_a_maximum_length_message)
+{
+	char cmd[64 + MESHTASTIC_MAX_TEXT_LEN];
+	struct meshtastic_packet sent;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	size_t prefix;
+
+	strcpy(cmd, "meshtastic text send broadcast ");
+	prefix = strlen(cmd);
+	memset(&cmd[prefix], 'x', MESHTASTIC_MAX_TEXT_LEN);
+	cmd[prefix + MESHTASTIC_MAX_TEXT_LEN] = '\0';
+
+	zassert_ok(run(cmd));
+
+	decode_deferred_tx(&sent, payload, sizeof(payload));
+	zassert_equal(sent.payload_len, MESHTASTIC_MAX_TEXT_LEN);
+	zassert_mem_equal(payload, &cmd[prefix], MESHTASTIC_MAX_TEXT_LEN);
+}
+
 ZTEST(shell_commands, test_text_send_rejects_bad_arguments)
 {
 	char long_message[64 + MESHTASTIC_MAX_TEXT_LEN];
