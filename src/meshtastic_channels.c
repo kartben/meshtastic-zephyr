@@ -85,8 +85,16 @@ static int channel_get_key(uint8_t index, struct meshtastic_channel_key *key)
 		expand_short_psk(psk_index, key);
 	}
 
-	if (key->len != 16U && key->len != 32U) {
-		return -EINVAL;
+	/*
+	 * A key that is not a full AES-128 or AES-256 key is zero-padded up to
+	 * the next size rather than rejected, matching upstream getKey().
+	 */
+	if (key->len < 16U) {
+		LOG_WRN("Channel %u PSK is %zu bytes, padding to AES-128", index, key->len);
+		key->len = 16U;
+	} else if (key->len > 16U && key->len < 32U) {
+		LOG_WRN("Channel %u PSK is %zu bytes, padding to AES-256", index, key->len);
+		key->len = 32U;
 	}
 
 	return 0;
