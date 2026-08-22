@@ -121,15 +121,16 @@ static void on_event(const struct meshtastic_event *event, void *user_data)
 	}
 }
 
+static struct meshtastic_config cfg = {
+	.node_id = TEST_NODE_ID,
+	.psk = meshtastic_default_psk,
+	.psk_len = sizeof(meshtastic_default_psk),
+	.channel_name = MESHTASTIC_CHANNEL_LONGFAST,
+	.frequency = MESHTASTIC_FREQ_EU,
+};
+
 static void *protocol_suite_setup(void)
 {
-	static struct meshtastic_config cfg = {
-		.node_id = TEST_NODE_ID,
-		.psk = meshtastic_default_psk,
-		.psk_len = sizeof(meshtastic_default_psk),
-		.channel_name = MESHTASTIC_CHANNEL_LONGFAST,
-		.frequency = MESHTASTIC_FREQ_EU,
-	};
 	int ret;
 
 	cfg.lora_dev = mock_lora_device();
@@ -155,6 +156,7 @@ static void *protocol_suite_setup(void)
 static void protocol_before(void *fixture)
 {
 	ARG_UNUSED(fixture);
+	zassert_ok(meshtastic_channels_init_from_config(&cfg), "channel reset failed");
 	meshtastic_set_device_role(meshtastic_Config_DeviceConfig_Role_CLIENT);
 	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_ALL);
 	memset(mt.dup_cache, 0, sizeof(mt.dup_cache));
@@ -1045,4 +1047,194 @@ ZTEST(protocol_stack, test_duplicate_want_ack_packet_is_acknowledged_again)
 	mock_lora_inject_rx(wire, wire_len, -20, 5);
 	mock_lora_wait_for_send_count(2U, K_MSEC(1000));
 	zassert_equal(state.recv_count, 1U, "duplicate must not be delivered twice");
+}
+
+/* Verifies a channel with no PSK sends and receives in the clear, as upstream does. */
+ZTEST(protocol_stack, test_cleartext_channel_round_trips)
+{
+	meshtastic_Channel cleartext = *meshtastic_channels_get(0U);
+	struct meshtastic_packet decoded;
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+
+	cleartext.settings.psk.size = 0U;
+	zassert_ok(meshtastic_channels_set_slot(0U, &cleartext));
+
+	zassert_ok(meshtastic_send_text(MESHTASTIC_NODE_BROADCAST, "clear"));
+	zassert_ok(k_sem_take(&state.tx_sem, K_SECONDS(1)), "timed out waiting for tx event");
+
+	wire_len = mock_lora_last_tx(wire, sizeof(wire));
+	zassert_ok(meshtastic_decode_wire_packet(wire, (int)wire_len, 0, 0, &decoded, payload,
+						 sizeof(payload)),
+		   "an unencrypted frame should decode");
+	assert_payload(decoded.payload, decoded.payload_len, "clear", strlen("clear"));
+}
+
+/* Verifies KNOWN_ONLY refuses to decode a packet whose sender is not in the NodeDB. */
+ZTEST(protocol_stack, test_known_only_mode_leaves_a_stranger_undecoded)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	uint32_t before = mt.status.decode_failures;
+
+	build_peer_wire_packet(TEST_NODE_ID, 0x0AB10001U, 3U, "stranger", wire, &wire_len);
+	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_KNOWN_ONLY);
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	k_msleep(100);
+
+	zassert_equal(state.recv_count, 0U, "an unknown sender must not be delivered");
+	zassert_equal(mt.status.decode_failures, before + 1U);
+}
+
+/* Verifies CORE_PORTNUMS_ONLY drops packets from ports outside the standard set. */
+ZTEST(protocol_stack, test_core_portnums_only_drops_other_ports)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+	struct meshtastic_packet packet = {
+		.from = PEER_NODE_ID,
+		.to = TEST_NODE_ID,
+		.id = 0x0AB20001U,
+		.portnum = MESHTASTIC_PORT_PRIVATE,
+		.payload = (const uint8_t *)"private",
+		.payload_len = strlen("private"),
+		.hop_limit = 3U,
+		.hop_start = 3U,
+		.channel_index = meshtastic_channels_primary_index(),
+	};
+
+	zassert_ok(meshtastic_build_wire_packet(&packet, wire, &wire_len));
+	meshtastic_set_rebroadcast_mode(
+		meshtastic_Config_DeviceConfig_RebroadcastMode_CORE_PORTNUMS_ONLY);
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	k_msleep(100);
+
+	zassert_equal(state.recv_count, 0U, "a non-core port must not be delivered");
+
+	/* A text message on the same policy still gets through. */
+	packet.id = 0x0AB20002U;
+	packet.portnum = MESHTASTIC_PORT_TEXT_MESSAGE;
+	packet.payload = (const uint8_t *)"core";
+	packet.payload_len = strlen("core");
+	zassert_ok(meshtastic_build_wire_packet(&packet, wire, &wire_len));
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	zassert_ok(k_sem_take(&state.rx_sem, K_SECONDS(1)), "timed out waiting for delivery");
+}
+
+/* Verifies LOCAL_ONLY keeps foreign traffic off our radio. */
+ZTEST(protocol_stack, test_local_only_mode_suppresses_foreign_relay)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+
+	build_wire_packet(PEER_NODE_ID, OTHER_NODE_ID, 0x0AB30001U, 3U,
+			  MESHTASTIC_PORT_TEXT_MESSAGE, (const uint8_t *)"relay", strlen("relay"),
+			  wire, &wire_len);
+	meshtastic_set_rebroadcast_mode(meshtastic_Config_DeviceConfig_RebroadcastMode_LOCAL_ONLY);
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	k_msleep(100);
+
+	assert_mock_send_count(0U);
+}
+
+/* Verifies a broadcast without a packet ID is not relayed: it cannot be deduplicated. */
+ZTEST(protocol_stack, test_broadcast_without_an_id_is_not_relayed)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+
+	build_wire_packet(PEER_NODE_ID, MESHTASTIC_NODE_BROADCAST, 0U, 3U,
+			  MESHTASTIC_PORT_TEXT_MESSAGE, (const uint8_t *)"anon", strlen("anon"),
+			  wire, &wire_len);
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	k_msleep(100);
+
+	assert_mock_send_count(0U);
+}
+
+/* Verifies we do not relay a frame that names us as its source. */
+ZTEST(protocol_stack, test_our_own_frame_heard_back_is_not_relayed)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX];
+	uint32_t wire_len;
+
+	build_wire_packet(TEST_NODE_ID, OTHER_NODE_ID, 0x0AB40001U, 3U,
+			  MESHTASTIC_PORT_TEXT_MESSAGE, (const uint8_t *)"echo", strlen("echo"),
+			  wire, &wire_len);
+
+	mock_lora_inject_rx(wire, wire_len, -20, 5);
+	k_msleep(100);
+
+	assert_mock_send_count(0U);
+}
+
+/* Verifies the Data encoder rejects payloads it cannot represent. */
+ZTEST(protocol_stack, test_data_encoding_rejects_bad_payloads)
+{
+	uint8_t buf[MESHTASTIC_PAYLOAD_MAX];
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN] = {0};
+	size_t encoded_len;
+
+	zassert_equal(meshtastic_encode_data(MESHTASTIC_PORT_TEXT_MESSAGE, NULL, 1U, buf,
+					     sizeof(buf), &encoded_len),
+		      -EINVAL);
+	zassert_equal(meshtastic_encode_data(MESHTASTIC_PORT_TEXT_MESSAGE, payload,
+					     MESHTASTIC_MAX_PAYLOAD_LEN + 1U, buf, sizeof(buf),
+					     &encoded_len),
+		      -EINVAL);
+	zassert_equal(meshtastic_encode_data(MESHTASTIC_PORT_TEXT_MESSAGE, payload, sizeof(payload),
+					     buf, sizeof(buf), NULL),
+		      -EINVAL);
+	/* A full payload no longer fits once the Data framing is added. */
+	zassert_equal(meshtastic_encode_data(MESHTASTIC_PORT_TEXT_MESSAGE, payload, sizeof(payload),
+					     buf, 4U, &encoded_len),
+		      -ENOMEM);
+}
+
+/* Verifies the wire decoder rejects frames it cannot make sense of. */
+ZTEST(protocol_stack, test_wire_decoding_rejects_bad_frames)
+{
+	uint8_t wire[MESHTASTIC_PKT_MAX] = {0};
+	uint8_t payload[MESHTASTIC_MAX_PAYLOAD_LEN];
+	struct meshtastic_packet packet;
+	bool decoded = true;
+
+	zassert_equal(meshtastic_decode_wire_packet(wire, MESHTASTIC_HDR_LEN - 1, 0, 0, &packet,
+						    payload, sizeof(payload)),
+		      -EINVAL);
+	zassert_equal(meshtastic_decode_wire_packet(NULL, MESHTASTIC_PKT_MAX, 0, 0, &packet,
+						    payload, sizeof(payload)),
+		      -EINVAL);
+
+	/* A header whose channel hash matches no slot leaves the payload encrypted. */
+	wire[12] = 0xA5U;
+	zassert_equal(meshtastic_decode_wire_packet(wire, MESHTASTIC_HDR_LEN + 4, 0, 0, &packet,
+						    payload, sizeof(payload)),
+		      -EBADMSG);
+	zassert_ok(meshtastic_try_decode_wire_packet(wire, MESHTASTIC_HDR_LEN + 4, 0, 0, &packet,
+						     payload, sizeof(payload), &decoded));
+	zassert_false(decoded);
+}
+
+/* Verifies the MeshPacket helpers guard their arguments. */
+ZTEST(protocol_stack, test_mesh_packet_helpers_guard_their_arguments)
+{
+	meshtastic_MeshPacket mesh = meshtastic_MeshPacket_init_zero;
+	struct meshtastic_packet packet = {0};
+
+	zassert_equal(meshtastic_packet_to_mesh_pb(NULL, &mesh), -EINVAL);
+	zassert_equal(meshtastic_packet_to_mesh_pb(&packet, NULL), -EINVAL);
+	zassert_equal(meshtastic_mesh_pb_try_decode(NULL), -EINVAL);
+
+	/* Copying from or to NULL must simply do nothing. */
+	meshtastic_mesh_packet_copy(NULL, &mesh);
+	meshtastic_mesh_packet_copy(&mesh, NULL);
+
+	zassert_equal(meshtastic_packet_wire_hash_for_index(0U), meshtastic_channels_get_hash(0U));
 }
