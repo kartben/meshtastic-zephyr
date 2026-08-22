@@ -12,10 +12,6 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build-docs:
     name: Build Doxygen docs
@@ -63,9 +59,28 @@ jobs:
 
       - name: Include coverage report in site
         run: |
-          if [ -f coverage-html/index.html ]; then
+          if [ -d coverage-html ] && [ -n "$(find coverage-html -name '*.html' -print -quit)" ]; then
             mkdir -p docs/html/coverage
             cp -a coverage-html/. docs/html/coverage/
+            if [ ! -f docs/html/coverage/index.html ] && [ -f docs/html/coverage/coverage_details.html ]; then
+              cat > docs/html/coverage/index.html <<'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0; url=coverage_details.html">
+  <title>Coverage report</title>
+  <link rel="canonical" href="coverage_details.html">
+</head>
+<body>
+  <p><a href="coverage_details.html">Open the coverage report</a>.</p>
+</body>
+</html>
+EOF
+            fi
+            echo 'Coverage report added at `/coverage/`.' >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo 'Coverage HTML not found; publishing docs without `/coverage/`.' >> "${GITHUB_STEP_SUMMARY}"
           fi
 
       - name: Upload Pages artifact
@@ -82,6 +97,9 @@ jobs:
     permissions:
       pages: write
       id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
