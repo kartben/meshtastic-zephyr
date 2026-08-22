@@ -5,6 +5,8 @@ menuconfig MESHTASTIC_MQTT
 	bool "Meshtastic MQTT gateway bridge"
 	depends on NETWORKING && MQTT_LIB && NET_TCP && NET_SOCKETS && DNS_RESOLVER
 	select NANOPB_ENABLE_MALLOC
+	select NET_MGMT
+	select NET_MGMT_EVENT
 	help
 	  Bridge LoRa mesh packets to a Meshtastic-compatible MQTT broker using
 	  ServiceEnvelope protobuf on msh/.../2/e/... topics.
