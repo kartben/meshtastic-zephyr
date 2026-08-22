@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * An emulated UART stands in for the phone's serial link.
+ */
+
+/ {
+	meshtastic_uart: uart-emul {
+		compatible = "zephyr,uart-emul";
+		status = "okay";
+		current-speed = <0>;
+		rx-fifo-size = <1024>;
+		tx-fifo-size = <2048>;
+	};
+
+	chosen {
+		zephyr,meshtastic-uart = &meshtastic_uart;
+	};
+};
