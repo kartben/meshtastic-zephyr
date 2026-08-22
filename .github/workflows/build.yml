@@ -88,6 +88,10 @@ jobs:
             {
               echo ''
               echo 'A detailed HTML coverage report is available in the **protocol-coverage-html** workflow artifact.'
+              if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+                echo ''
+                echo 'On `main`, the report is also published to the [GitHub Pages coverage site](https://kartben.github.io/meshtastic-zephyr/coverage/).'
+              fi
             } >> "${GITHUB_STEP_SUMMARY}"
           fi
 
