@@ -1,0 +1,120 @@
+name: Static analysis
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gcc-analyzer:
+    # Zephyr's SCA infrastructure (https://docs.zephyrproject.org/latest/develop/sca/gcc.html)
+    # wires GCC's -fanalyzer into the build. The two entries below cover the
+    # same builds as the Build workflow: the ztest suites on native_sim (host
+    # GCC) and the sample on its integration platforms (Zephyr SDK GCC).
+    name: GCC static analyzer (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: tests
+            toolchains: arm-zephyr-eabi
+            twister-args: -T tests -p native_sim/native/64
+          - name: sample
+            toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
+            twister-args: -T samples/meshtastic --integration
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: meshtastic-zephyr
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: meshtastic-zephyr
+          toolchains: ${{ matrix.toolchains }}
+          # ccache has to stay out of the way for the analyzer to write its
+          # SARIF files (see USE_CCACHE below), so a compiler cache would only
+          # ever miss here.
+          enable-ccache: false
+
+      - name: Run GCC static analyzer
+        working-directory: meshtastic-zephyr
+        shell: bash
+        env:
+          ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+        run: |
+          # -DZEPHYR_SCA_VARIANT=gcc appends -fanalyzer to the toolchain flags
+          # and forwards GCC_SCA_OPTS to the compiler verbatim. Writing the
+          # diagnostics to SARIF side-car files requires USE_CCACHE=0, since
+          # ccache is unaware of those files (ccache/ccache#1466), and Zephyr
+          # errors out rather than silently losing them.
+          #
+          # GCC_COMPILER_VERSION is only needed for native_sim: those builds
+          # fall back to the host toolchain (cmake/modules/FindHostTools.cmake)
+          # and cmake/compiler/host-gcc/target.cmake does not export the
+          # version the way cmake/compiler/gcc/target.cmake does, so the guard
+          # in cmake/sca/gcc/sca.cmake would reject an otherwise fine host GCC.
+          # Cross builds overwrite the value with the real SDK compiler version.
+          #
+          # --disable-warnings-as-errors is required: twister promotes
+          # compiler warnings to errors by default, and -fanalyzer warns about
+          # upstream Zephyr code (subsys/logging/log_mgmt.c, among others),
+          # which would fail the build before our own sources are reported on.
+          west twister ${{ matrix.twister-args }} \
+            --build-only --disable-warnings-as-errors -v --inline-logs \
+            -x=ZEPHYR_SCA_VARIANT=gcc \
+            -x=USE_CCACHE=0 \
+            -x=GCC_SCA_OPTS=-fdiagnostics-format=sarif-file \
+            -x=GCC_COMPILER_VERSION="$(gcc -dumpfullversion)"
+
+      - name: Collect analyzer findings
+        working-directory: meshtastic-zephyr
+        shell: bash
+        run: |
+          # GCC drops one SARIF document per translation unit into each build
+          # directory; keep the ones that point at our own sources and merge
+          # them into the single run code scanning expects.
+          python3 .github/scripts/merge_sca_sarif.py twister-out \
+            --repo-root . \
+            --include src --include include --include samples --include tests \
+            --output sca-results/gcc-analyzer-${{ matrix.name }}.sarif \
+            --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload findings to code scanning
+        # Pull requests from forks only get a read-only GITHUB_TOKEN.
+        if: ${{ !github.event.pull_request.head.repo.fork }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: meshtastic-zephyr/sca-results/gcc-analyzer-${{ matrix.name }}.sarif
+          checkout_path: ${{ github.workspace }}/meshtastic-zephyr
+          category: gcc-analyzer-${{ matrix.name }}
+
+      - name: Upload findings as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-analyzer-${{ matrix.name }}-sarif
+          path: meshtastic-zephyr/sca-results/
+          if-no-files-found: ignore
