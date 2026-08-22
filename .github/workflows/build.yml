@@ -41,6 +41,14 @@ jobs:
           toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
           ccache-cache-key: ${{ matrix.os }}
 
+      - name: Fetch Espressif binary blobs
+        shell: bash
+        run: |
+          # The T-Watch S3 Bluetooth and Wi-Fi builds link against Espressif's
+          # closed-source libraries, and Zephyr verifies every blob a module
+          # declares, not just the ones a given image needs.
+          west blobs fetch hal_espressif
+
       - name: Install MQTT test dependencies
         shell: bash
         run: |

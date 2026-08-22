@@ -35,9 +35,14 @@ jobs:
           - name: tests
             toolchains: arm-zephyr-eabi
             twister-args: -T tests -p native_sim/native/64
+          # --exclude-tag ble skips sample.meshtastic.full: -fanalyzer makes
+          # the SDK's Xtensa GCC 14.3 hit an internal compiler error on
+          # Zephyr's Bluetooth host code (fold_convert_loc, at
+          # fold-const.cc:2757, reached through __atomic_fetch_or in
+          # zephyr/sys/atomic_builtin.h). CodeQL still covers that build.
           - name: sample
             toolchains: arm-zephyr-eabi:xtensa-espressif_esp32s3_zephyr-elf
-            twister-args: -T samples/meshtastic --integration
+            twister-args: -T samples/meshtastic --integration --exclude-tag ble
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,6 +64,15 @@ jobs:
           # SARIF files (see USE_CCACHE below), so a compiler cache would only
           # ever miss here.
           enable-ccache: false
+
+      - name: Fetch Espressif binary blobs
+        if: matrix.name == 'sample'
+        shell: bash
+        run: |
+          # The T-Watch S3 Bluetooth and Wi-Fi builds link against Espressif's
+          # closed-source libraries, and Zephyr verifies every blob a module
+          # declares, not just the ones a given image needs.
+          west blobs fetch hal_espressif
 
       - name: Run GCC static analyzer
         working-directory: meshtastic-zephyr
