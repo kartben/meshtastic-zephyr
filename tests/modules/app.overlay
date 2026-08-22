@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * One fake sensor backs every environment metrics alias so a single node
+ * exercises temperature, humidity, pressure, gas and light together.
+ */
+
+/ {
+	env_sensor: env-sensor {
+		compatible = "vnd,fake-sensor";
+		status = "okay";
+	};
+
+	aliases {
+		ambient-temp0 = &env_sensor;
+		humidity0 = &env_sensor;
+		pressure-sensor = &env_sensor;
+		gas-sensor = &env_sensor;
+		light-sensor = &env_sensor;
+	};
+};

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0
+
+description: |
+  Test-only sensor whose readings are set from the test code. Backs every
+  environment metrics alias so a single node exercises all quantities.
+
+compatible: "vnd,fake-sensor"
+
+include: sensor-device.yaml
