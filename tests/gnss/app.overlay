@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * Zephyr's emulated GNSS device stands in for a receiver; the tests publish
+ * fixes through it directly.
+ */
+
+/ {
+	gnss0: gnss-emul {
+		compatible = "zephyr,gnss-emul";
+		status = "okay";
+	};
+
+	aliases {
+		gnss = &gnss0;
+	};
+};

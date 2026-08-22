@@ -1,0 +1,18 @@
+common:
+  tags:
+    - meshtastic
+    - gnss
+    - position
+    - native_sim
+  integration_platforms:
+    - native_sim/native/64
+  platform_allow:
+    - native_sim/native/64
+tests:
+  meshtastic.gnss.native_sim: {}
+  # The periodic broadcast is on by default; build it too so both halves of the
+  # CONFIG_MESHTASTIC_GNSS_AUTO_SEND split keep compiling.
+  meshtastic.gnss.auto_send.native_sim:
+    build_only: true
+    extra_configs:
+      - CONFIG_MESHTASTIC_GNSS_AUTO_SEND=y
