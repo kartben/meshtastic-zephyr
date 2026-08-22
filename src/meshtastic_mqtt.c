@@ -112,15 +112,20 @@ static void mqtt_net_event_handler(struct net_mgmt_event_callback *cb, uint64_t 
 	}
 }
 
-static bool mqtt_network_is_ready(void)
+static bool mqtt_iface_has_global_ipv4(void)
 {
 	struct net_if *iface = net_if_get_default();
 
-	if (!mqtt_net_has_ipv4 || iface == NULL || !net_if_is_up(iface)) {
+	if (iface == NULL || !net_if_is_up(iface)) {
 		return false;
 	}
 
 	return net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED) != NULL;
+}
+
+static bool mqtt_network_is_ready(void)
+{
+	return mqtt_net_has_ipv4 && mqtt_iface_has_global_ipv4();
 }
 
 static void mqtt_prepare_fds(void)
@@ -1099,7 +1104,12 @@ int meshtastic_mqtt_init(void)
 	net_mgmt_init_event_callback(&mqtt_net_mgmt_cb, mqtt_net_event_handler,
 				     NET_EVENT_IPV4_ADDR_ADD | NET_EVENT_IPV4_ADDR_DEL);
 	net_mgmt_add_event_callback(&mqtt_net_mgmt_cb);
-	mqtt_net_has_ipv4 = mqtt_network_is_ready();
+	/*
+	 * An address configured before we got here raises no event, so seed the
+	 * flag from the interface rather than from mqtt_network_is_ready(),
+	 * which reports the flag back to us.
+	 */
+	mqtt_net_has_ipv4 = mqtt_iface_has_global_ipv4();
 
 	strncpy(mqtt_ctx.crypt_prefix, CONFIG_MESHTASTIC_MQTT_ROOT,
 		sizeof(mqtt_ctx.crypt_prefix) - 1U);
