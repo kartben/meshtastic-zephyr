@@ -249,12 +249,32 @@ ZTEST(config_store, test_invalid_channels_are_rejected)
 		      -EINVAL);
 	zassert_equal(meshtastic_config_store_set_channel(0U, NULL), -EINVAL);
 
-	channel.settings.psk.size = 8U;
+	channel.settings.psk.size = sizeof(channel.settings.psk.bytes) + 1U;
 	zassert_equal(meshtastic_config_store_set_channel(1U, &channel), -EINVAL);
 
 	channel.settings.psk.size = 0U;
 	channel.role = (meshtastic_Channel_Role)(meshtastic_Channel_Role_SECONDARY + 1);
 	zassert_equal(meshtastic_config_store_set_channel(1U, &channel), -EINVAL);
+}
+
+ZTEST(config_store, test_a_short_channel_key_is_accepted_and_padded)
+{
+	const uint8_t short_key[] = {0xDEU, 0xADU, 0xBEU, 0xEFU};
+	meshtastic_Channel channel = meshtastic_Channel_init_zero;
+	struct meshtastic_channel_key key;
+
+	channel.role = meshtastic_Channel_Role_SECONDARY;
+	channel.has_settings = true;
+	strcpy(channel.settings.name, "Short");
+	memcpy(channel.settings.psk.bytes, short_key, sizeof(short_key));
+	channel.settings.psk.size = sizeof(short_key);
+
+	zassert_ok(meshtastic_config_store_set_channel(1U, &channel),
+		   "a phone may push a key shorter than AES-128");
+
+	zassert_ok(meshtastic_channels_get_key(1U, &key));
+	zassert_equal(key.len, 16U);
+	zassert_mem_equal(key.bytes, short_key, sizeof(short_key));
 }
 
 ZTEST(config_store, test_role_and_rebroadcast_setters_validate_their_input)

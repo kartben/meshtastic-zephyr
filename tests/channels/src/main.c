@@ -182,15 +182,38 @@ ZTEST(channels, test_primary_channel_without_psk_is_cleartext)
 		      xor_hash((const uint8_t *)"open", strlen("open")));
 }
 
-ZTEST(channels, test_unsupported_key_length_is_rejected)
+ZTEST(channels, test_an_undersized_key_is_padded_to_aes_128)
 {
 	const uint8_t short_key[] = {1U, 2U, 3U, 4U};
 	struct meshtastic_channel_key key;
 
 	set_slot(1U, meshtastic_Channel_Role_SECONDARY, "shortkey", short_key, sizeof(short_key));
 
-	zassert_equal(meshtastic_channels_get_key(1U, &key), -EINVAL);
-	zassert_equal(meshtastic_channels_get_hash(1U), 0U);
+	zassert_ok(meshtastic_channels_get_key(1U, &key));
+	zassert_equal(key.len, 16U);
+	zassert_mem_equal(key.bytes, short_key, sizeof(short_key));
+	for (size_t i = sizeof(short_key); i < key.len; i++) {
+		zassert_equal(key.bytes[i], 0U, "byte %zu should be zero padding", i);
+	}
+
+	zassert_equal(meshtastic_channels_get_hash(1U),
+		      xor_hash((const uint8_t *)"shortkey", strlen("shortkey")) ^
+			      xor_hash(short_key, sizeof(short_key)),
+		      "padding bytes must not change the hash");
+}
+
+ZTEST(channels, test_a_key_between_the_two_aes_sizes_is_padded_to_aes_256)
+{
+	uint8_t key_20[20];
+	struct meshtastic_channel_key key;
+
+	memset(key_20, 0xABU, sizeof(key_20));
+	set_slot(1U, meshtastic_Channel_Role_SECONDARY, "longkey", key_20, sizeof(key_20));
+
+	zassert_ok(meshtastic_channels_get_key(1U, &key));
+	zassert_equal(key.len, 32U);
+	zassert_mem_equal(key.bytes, key_20, sizeof(key_20));
+	zassert_equal(key.bytes[sizeof(key_20)], 0U);
 }
 
 ZTEST(channels, test_legacy_default_channel_name_is_normalised)
