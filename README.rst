@@ -7,15 +7,6 @@ Zephyr-supported board + LoRa transceiver.
 **DISCLAIMER**: this project is not affiliated with or endorsed by Meshtastic LLC. Meshtastic® is a
 registered trademark of Meshtastic LLC.
 
-Documentation
-*************
-
-The Doxygen API reference and the protocol test coverage report are published on GitHub Pages
-after each push to ``main``:
-
-* `API reference <https://kartben.github.io/meshtastic-zephyr/>`_
-* `Coverage report <https://kartben.github.io/meshtastic-zephyr/coverage/>`_
-
 Why Zephyr?
 ***********
 
@@ -221,6 +212,15 @@ Build the Meshtastic sample with:
 
 Refer to the `sample's README <samples/meshtastic/README.rst>`_ for more information on how to build
 and run the sample and enable additional features.
+
+Documentation
+*************
+
+The Doxygen API reference and the protocol test coverage report are published on GitHub Pages
+after each push to ``main``:
+
+* `API reference <https://kartben.github.io/meshtastic-zephyr/>`_
+* `Coverage report <https://kartben.github.io/meshtastic-zephyr/coverage/>`_
 
 License
 *******
