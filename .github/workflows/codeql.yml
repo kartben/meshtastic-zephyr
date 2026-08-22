@@ -73,7 +73,7 @@ jobs:
           python-version: 3.12
 
       - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        uses: zephyrproject-rtos/action-zephyr-setup@be8136a8bba01580485d98b7ad2d32477c36a49a # v1.0.15
         with:
           app-path: meshtastic-zephyr
           toolchains: xtensa-espressif_esp32s3_zephyr-elf
