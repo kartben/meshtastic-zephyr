@@ -42,7 +42,7 @@ jobs:
           - language: c-cpp
             build-mode: manual
             config-file: ./meshtastic-zephyr/.github/codeql/codeql-c-cpp-config.yml
-            timeout: 90
+            timeout: 150
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,10 +61,19 @@ jobs:
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: meshtastic-zephyr
-          toolchains: arm-zephyr-eabi
+          toolchains: xtensa-espressif_esp32s3_zephyr-elf
           # CodeQL cannot observe a compilation that ccache serves from its
           # cache, so every build below is a cache miss by design.
           enable-ccache: false
+
+      - name: Fetch Espressif binary blobs
+        if: matrix.build-mode == 'manual'
+        shell: bash
+        run: |
+          # The T-Watch S3 Bluetooth and Wi-Fi builds link against Espressif's
+          # closed-source libraries, and Zephyr verifies every blob a module
+          # declares, not just the ones a given image needs.
+          west blobs fetch hal_espressif
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -84,14 +93,15 @@ jobs:
         env:
           ZEPHYR_TOOLCHAIN_VARIANT: zephyr
         run: |
-          # CodeQL only analyzes code it watches the compiler build, so this
-          # mirrors the Build workflow: the ztest suites on native_sim, and the
-          # sample on one of its integration platforms to pull in the code that
-          # the tests configure out. USE_CCACHE=0 keeps every compilation
-          # visible to the tracer.
+          # CodeQL only analyzes code it watches the compiler build. The ztest
+          # suites cover the protocol core; the sample is built for the T-Watch
+          # S3 because that is the platform whose configurations pull in
+          # Bluetooth, the PhoneAPI, the shell, GNSS and the MQTT gateway - the
+          # code paths that handle input from off the air and off the network.
+          # USE_CCACHE=0 keeps every compilation visible to the tracer.
           west twister -T tests -p native_sim/native/64 \
             -O twister-out-tests --build-only -v --inline-logs -x=USE_CCACHE=0
-          west twister -T samples/meshtastic -p arduino_giga_r1/stm32h747xx/m7 \
+          west twister -T samples/meshtastic -p twatch_s3/esp32s3/procpu \
             -O twister-out-sample --build-only -v --inline-logs -x=USE_CCACHE=0
 
       - name: Perform CodeQL Analysis

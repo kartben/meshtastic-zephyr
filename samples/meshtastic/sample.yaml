@@ -6,15 +6,15 @@ sample:
     greeting every 30 seconds.
 common:
   build_only: true
-  integration_platforms:
-    - twatch_s3/esp32s3/procpu
-    - arduino_giga_r1/stm32h747xx/m7
 tests:
   sample.meshtastic:
     tags:
       - lora
       - meshtastic
     platform_allow:
+      - twatch_s3/esp32s3/procpu
+      - arduino_giga_r1/stm32h747xx/m7
+    integration_platforms:
       - twatch_s3/esp32s3/procpu
       - arduino_giga_r1/stm32h747xx/m7
     extra_args:
@@ -27,6 +27,38 @@ tests:
     platform_allow:
       - twatch_s3/esp32s3/procpu
       - arduino_giga_r1/stm32h747xx/m7
+    integration_platforms:
+      - twatch_s3/esp32s3/procpu
+      - arduino_giga_r1/stm32h747xx/m7
     extra_args:
       - platform:arduino_giga_r1/stm32h747xx/m7:SHIELD=semtech_sx1262mb2das
       - EXTRA_CONF_FILE=overlay-settings.conf
+  # Two fuller configurations, so that CI also compiles the optional
+  # subsystems - Bluetooth, the PhoneAPI, the shell, GNSS, environment
+  # telemetry and the MQTT gateway - that the default sample configures out.
+  # They cannot be merged into one image: Bluetooth and Wi-Fi together
+  # overflow the ESP32-S3 DRAM segment.
+  sample.meshtastic.full:
+    tags:
+      - lora
+      - meshtastic
+      - ble
+      - shell
+    platform_allow:
+      - twatch_s3/esp32s3/procpu
+    integration_platforms:
+      - twatch_s3/esp32s3/procpu
+    extra_args:
+      - EXTRA_CONF_FILE="overlay-settings.conf;overlay-ble.conf;overlay-shell.conf;overlay-gnss.conf;overlay-environment.conf"
+  sample.meshtastic.mqtt:
+    tags:
+      - lora
+      - meshtastic
+      - mqtt
+      - wifi
+    platform_allow:
+      - twatch_s3/esp32s3/procpu
+    integration_platforms:
+      - twatch_s3/esp32s3/procpu
+    extra_args:
+      - EXTRA_CONF_FILE="overlay-settings.conf;overlay-shell.conf;overlay-wifi-shell.conf;overlay-mqtt.conf"

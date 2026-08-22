@@ -234,8 +234,11 @@ report into the repository's `code scanning alerts
 * **CodeQL** (``.github/workflows/codeql.yml``) on the C sources and on the GitHub Actions
   workflows.
 
-Both analyses only see code that is actually compiled, so a subsystem that no build in CI enables
-(Bluetooth, MQTT, GNSS and the shell commands, at the time of writing) is not covered.
+Both analyses only see code that is actually compiled, which is why CI builds the sample in the
+``sample.meshtastic.full`` and ``sample.meshtastic.mqtt`` configurations on top of the default one:
+between them they pull in Bluetooth, the PhoneAPI, the shell commands, GNSS, environment telemetry
+and the MQTT gateway. The serial PhoneAPI transport is still not covered, as it needs a board
+providing a ``zephyr,meshtastic-uart`` devicetree chosen node.
 
 Documentation
 *************

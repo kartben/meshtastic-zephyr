@@ -31,6 +31,24 @@ ID instead, enable custom source and set the default:
      -DCONFIG_MESHTASTIC_NODE_ID_CUSTOM=y \
      -DCONFIG_MESHTASTIC_NODE_ID_DEFAULT=0x01020304
 
+Feature overlays
+****************
+
+Optional subsystems are enabled through the ``overlay-*.conf`` files next to the sample. They can be
+combined, within the limits of the target's memory — on the T-Watch S3, Bluetooth and Wi-Fi do not
+fit in the same image. The two combinations CI builds are:
+
+.. code-block:: console
+
+   west build -b twatch_s3/esp32s3/procpu samples/meshtastic -- \
+     -DEXTRA_CONF_FILE="overlay-settings.conf;overlay-ble.conf;overlay-shell.conf;overlay-gnss.conf;overlay-environment.conf"
+
+   west build -b twatch_s3/esp32s3/procpu samples/meshtastic -- \
+     -DEXTRA_CONF_FILE="overlay-settings.conf;overlay-shell.conf;overlay-wifi-shell.conf;overlay-mqtt.conf"
+
+Espressif targets need ``west blobs fetch hal_espressif`` before either build, as the Bluetooth and
+Wi-Fi drivers link against closed-source libraries.
+
 Shell commands
 **************
 
