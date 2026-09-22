@@ -276,7 +276,7 @@ static void serial_isr_rx(void)
 	uint32_t space;
 	int len;
 
-	space = ring_buf_put_claim(&serial_rx_rb, &data, UINT32_MAX);
+	space = ring_buf_put_ptr(&serial_rx_rb, &data, 0);
 	if (space == 0U) {
 		uint8_t discard[16];
 
@@ -289,11 +289,10 @@ static void serial_isr_rx(void)
 
 	len = uart_fifo_read(serial.dev, data, space);
 	if (len <= 0) {
-		ring_buf_put_finish(&serial_rx_rb, 0U);
 		return;
 	}
 
-	ring_buf_put_finish(&serial_rx_rb, (uint32_t)len);
+	ring_buf_commit(&serial_rx_rb, (uint32_t)len);
 	k_work_submit_to_queue(&serial.work_q, &serial.rx_work);
 }
 
@@ -303,7 +302,7 @@ static void serial_isr_tx(void)
 	uint32_t len;
 	int sent;
 
-	len = ring_buf_get_claim(&serial_tx_rb, &data, UINT32_MAX);
+	len = ring_buf_get_ptr(&serial_tx_rb, &data, 0);
 	if (len == 0U) {
 		serial_tx_finish();
 		return;
@@ -311,11 +310,10 @@ static void serial_isr_tx(void)
 
 	sent = uart_fifo_fill(serial.dev, data, len);
 	if (sent <= 0) {
-		ring_buf_get_finish(&serial_tx_rb, 0U);
 		return;
 	}
 
-	ring_buf_get_finish(&serial_tx_rb, (uint32_t)sent);
+	ring_buf_consume(&serial_tx_rb, (uint32_t)sent);
 }
 
 static void serial_isr(const struct device *dev, void *user_data)
