@@ -74,7 +74,10 @@ int main(void)
 		.frequency = 865100000U,
 		.tx_power = CONFIG_MESHTASTIC_TX_POWER,
 #else
-		.frequency = MESHTASTIC_FREQ_EU,
+		.frequency = (CONFIG_MESHTASTIC_SAMPLE_FREQUENCY != 0)
+				     ? CONFIG_MESHTASTIC_SAMPLE_FREQUENCY
+				     : MESHTASTIC_FREQ_EU,
+		.spread_factor = CONFIG_MESHTASTIC_SAMPLE_SPREAD_FACTOR,
 		/* hop_limit and tx_power: 0 → use Kconfig defaults */
 #endif
 	};
@@ -101,9 +104,9 @@ int main(void)
 	 * mesh automatically by the subsystem; see CONFIG_MESHTASTIC_NODEINFO.
 	 */
 
+#if defined(CONFIG_MESHTASTIC_SAMPLE_DEMO_BROADCAST)
 	/* Periodically broadcast a text message. */
 	while (true) {
-		// hello from CONFIG_BOARD_TARGET
 		ret = meshtastic_send_text(MESHTASTIC_NODE_BROADCAST,
 					   "Hello from " CONFIG_BOARD_TARGET "!");
 		if (ret < 0) {
@@ -112,8 +115,11 @@ int main(void)
 			LOG_INF("Broadcast sent");
 		}
 
-		k_sleep(K_SECONDS(300));
+		k_sleep(K_SECONDS(CONFIG_MESHTASTIC_SAMPLE_DEMO_BROADCAST_INTERVAL_SEC));
 	}
+#else
+	k_sleep(K_FOREVER);
+#endif
 
 	return 0;
 }

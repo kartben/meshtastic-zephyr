@@ -41,6 +41,7 @@ struct meshtastic_context {
 	uint8_t hop_limit;
 	int8_t tx_power;
 	uint32_t frequency;
+	uint8_t spread_factor;
 	const char *channel_name;
 	const char *long_name;
 	const char *short_name;
